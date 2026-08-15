@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Camera, RefreshCw, Images, Maximize, Minimize, Volume2, VolumeX } from 'lucide-react';
 import { getSessionCount } from '../utils/db';
 
-export default function Header({ onReset, hasPhotos, onOpenGallery, soundEnabled, setSoundEnabled }) {
+export default function Header({ onReset, hasPhotos, onOpenGallery, soundEnabled, setSoundEnabled, onOpenAdmin }) {
   const [galleryCount, setGalleryCount] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -78,6 +78,30 @@ export default function Header({ onReset, hasPhotos, onOpenGallery, soundEnabled
           <button className="btn-secondary" onClick={onReset} title="Mulai Sesi Baru">
             <RefreshCw size={16} />
             <span>Sesi Baru</span>
+          </button>
+        )}
+
+        {/* Admin Access — subtle icon button */}
+        {onOpenAdmin && (
+          <button
+            onClick={onOpenAdmin}
+            title="Admin Panel"
+            aria-label="Buka Admin Panel"
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#4B5563',
+              fontSize: '0.85rem',
+              padding: '6px 8px',
+              borderRadius: '6px',
+              lineHeight: 1,
+              transition: 'color 0.2s',
+            }}
+            onMouseEnter={e => e.currentTarget.style.color = '#9CA3AF'}
+            onMouseLeave={e => e.currentTarget.style.color = '#4B5563'}
+          >
+            🔐
           </button>
         )}
       </div>

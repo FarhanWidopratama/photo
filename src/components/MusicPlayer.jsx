@@ -67,6 +67,43 @@ export default function MusicPlayer() {
     saveSettings({ musicVolume: volume, musicMuted: isMuted, lastTrackId: currentTrack.id }).catch(() => {});
   }, [volume, isMuted, currentTrack.id]);
 
+  // ── Fade in/out audio on session start/end events ────────────
+  useEffect(() => {
+    const handleSessionStart = () => {
+      const audio = audioRef.current;
+      if (!audio || !isPlaying) return;
+      const target = isMuted ? 0 : volume;
+      audio.volume = 0;
+      let v = 0;
+      const step = target / 20;
+      const interval = setInterval(() => {
+        v = Math.min(v + step, target);
+        if (audioRef.current) audioRef.current.volume = v;
+        if (v >= target) clearInterval(interval);
+      }, 50);
+    };
+
+    const handleSessionEnd = () => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      let v = audio.volume;
+      const target = isMuted ? 0 : volume;
+      const step = Math.max(v, target) / 20;
+      const interval = setInterval(() => {
+        v = Math.max(v - step, 0);
+        if (audioRef.current) audioRef.current.volume = v;
+        if (v <= 0) clearInterval(interval);
+      }, 50);
+    };
+
+    document.addEventListener('photobooth:sessionStart', handleSessionStart);
+    document.addEventListener('photobooth:sessionEnd', handleSessionEnd);
+    return () => {
+      document.removeEventListener('photobooth:sessionStart', handleSessionStart);
+      document.removeEventListener('photobooth:sessionEnd', handleSessionEnd);
+    };
+  }, [isPlaying, volume, isMuted]);
+
   const togglePlay = () => {
     if (!audioRef.current) return;
     if (isPlaying) {

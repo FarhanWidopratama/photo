@@ -24,6 +24,7 @@ const CameraView = forwardRef(function CameraView({
   aiOutfit = 'none',
   arProp = 'none',
   countdownDuration = 3,
+  poseGapSeconds = 3,
   soundEnabled = true,
   onSessionComplete,
   stripPreviewNode
@@ -61,6 +62,8 @@ const CameraView = forwardRef(function CameraView({
   const [countdown, setCountdown] = useState(null);
   const [flashActive, setFlashActive] = useState(false);
   const [activeShotIndex, setActiveShotIndex] = useState(null);
+  const [isPoseGap, setIsPoseGap] = useState(false);
+  const [poseGapProgress, setPoseGapProgress] = useState(100);
 
   // ── Initialize webcam ─────────────────────────────────────
   useEffect(() => {
@@ -241,6 +244,7 @@ const CameraView = forwardRef(function CameraView({
   const startStudioSession = async () => {
     if (isCapturing || cameraError) return;
     setIsCapturing(true);
+    document.dispatchEvent(new CustomEvent('photobooth:sessionStart'));
     const newPhotos = [...photos];
 
     const cheerWords = ['Senyum! 😊', 'Cakep! ✨', 'Mantap! 🔥', 'Keren! 💖'];
@@ -273,12 +277,29 @@ const CameraView = forwardRef(function CameraView({
 
       setTimeout(() => setFlashActive(false), 150);
       await new Promise(res => setTimeout(res, 900));
+
+      // Pose gap jeda
+      if (shotIdx < 3) {
+        setCountdown(null);
+        setIsPoseGap(true);
+        setPoseGapProgress(100);
+        const gapMs = (poseGapSeconds || 3) * 1000;
+        const interval = 50;
+        const steps = gapMs / interval;
+        for (let i = 0; i < steps; i++) {
+          setPoseGapProgress(Math.round(100 - ((i + 1) / steps) * 100));
+          await new Promise(res => setTimeout(res, interval));
+        }
+        setIsPoseGap(false);
+        setPoseGapProgress(100);
+      }
     }
 
     setCountdown(null);
     setIsCapturing(false);
     setActiveShotIndex(null);
     speakCountdown('Semua selesai! Cek strip foto kamu ya.');
+    document.dispatchEvent(new CustomEvent('photobooth:sessionEnd'));
     if (onSessionComplete) onSessionComplete(newPhotos);
   };
 
@@ -382,6 +403,15 @@ const CameraView = forwardRef(function CameraView({
                 <div className="countdown-number">{countdown}</div>
                 <div className="countdown-badge">
                   Jepretan ke-{activeShotIndex !== null ? activeShotIndex + 1 : 1} dari 4
+                </div>
+              </div>
+            )}
+
+            {isPoseGap && (
+              <div className="pose-gap-overlay">
+                <div className="pose-gap-text">Siap pose berikutnya! ✨</div>
+                <div className="pose-gap-bar-container">
+                  <div className="pose-gap-bar" style={{ width: `${poseGapProgress}%` }} />
                 </div>
               </div>
             )}

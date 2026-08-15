@@ -17,7 +17,9 @@ export function generateAnimatedGif(options) {
     titleText = 'LIFE 4 CUTS 📸',
     fontStyle = 'default',
     sticker = null,
-    doodlePaths = []
+    doodlePaths = [],
+    watermarkText = null,
+    watermarkOpacity = 0.4
   } = options;
 
   return new Promise(async (resolve, reject) => {
@@ -46,7 +48,9 @@ export function generateAnimatedGif(options) {
           titleText,
           fontStyle,
           sticker: null, // Skip sticker in GIF frames for cleaner look
-          doodlePaths: [] // Skip doodles in GIF for performance
+          doodlePaths: [], // Skip doodles in GIF for performance
+          watermarkText,
+          watermarkOpacity
         });
         frameDataUrls.push(frameUrl);
       }

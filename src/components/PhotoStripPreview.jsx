@@ -31,6 +31,8 @@ export default function PhotoStripPreview({
   brushSize,
   selectedLayer,
   setSelectedLayer,
+  watermarkText = null,
+  watermarkOpacity = 0.4,
 }) {
   const frameRef = useRef(null);
   const [frameDimensions, setFrameDimensions] = useState({ width: 280, height: 620 });
@@ -443,6 +445,24 @@ export default function PhotoStripPreview({
             </div>
           )}
         </div>
+
+        {/* Watermark Overlay — CSS only, purely visual preview */}
+        {watermarkText && watermarkOpacity > 0 && (
+          <div style={{
+            position: 'absolute',
+            bottom: '8px',
+            right: '10px',
+            fontSize: '0.6rem',
+            fontWeight: 'bold',
+            color: '#888',
+            opacity: watermarkOpacity,
+            pointerEvents: 'none',
+            zIndex: 10,
+            letterSpacing: '0.3px',
+          }}>
+            {watermarkText}
+          </div>
+        )}
       </div>
     </div>
   );

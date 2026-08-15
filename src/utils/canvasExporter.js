@@ -5,6 +5,34 @@ import QRCode from 'qrcode';
 //  Renders every frame theme identically to the browser preview
 // ============================================================
 
+/**
+ * Word-wrap text to fit within maxWidth pixels.
+ * Handles explicit \n newlines and auto-wraps long words.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {string} text
+ * @param {number} maxWidth
+ * @returns {string[]} array of lines
+ */
+function wrapText(ctx, text, maxWidth) {
+  const paragraphs = text.split('\n');
+  const lines = [];
+  for (const paragraph of paragraphs) {
+    const words = paragraph.split(' ');
+    let currentLine = '';
+    for (const word of words) {
+      const test = currentLine ? `${currentLine} ${word}` : word;
+      if (ctx.measureText(test).width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = test;
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+  }
+  return lines.length > 0 ? lines : [''];
+}
+
 export function drawPhotoStripToCanvas(canvas, options) {
   const {
     photos = [],
@@ -27,6 +55,8 @@ export function drawPhotoStripToCanvas(canvas, options) {
     placedStickers = [],
     placedCaptions = [],
     placedImages = [],
+    watermarkText = null,
+    watermarkOpacity = 0.4,
   } = options;
 
   return new Promise((resolve, reject) => {
@@ -362,10 +392,18 @@ export function drawPhotoStripToCanvas(canvas, options) {
 
           ctx.textBaseline = 'middle';
           ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
-          const metrics = ctx.measureText(cap.text || '');
+
+          const captionLines = wrapText(ctx, cap.text || '', stripWidth * 0.85);
+          const lineHeight = (cap.fontSize || 14) * scale * 1.3;
+
           const padX = 12, padY = 6;
-          const rectW = Math.max(metrics.width + padX * 2, 20);
-          const rectH = fontSize + padY * 2;
+          // Measure the widest line for the background rect
+          const maxLineWidth = captionLines.reduce((max, line) => {
+            const w = ctx.measureText(line).width;
+            return w > max ? w : max;
+          }, 0);
+          const rectW = Math.max(maxLineWidth + padX * 2, 20);
+          const rectH = (lineHeight * captionLines.length) + padY * 2;
 
           ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
           ctx.beginPath();
@@ -379,19 +417,21 @@ export function drawPhotoStripToCanvas(canvas, options) {
           ctx.strokeStyle = strokeEnabled ? 'rgba(15, 23, 42, 0.8)' : 'transparent';
           ctx.lineWidth = strokeEnabled ? Math.max(2, fontSize * 0.1) : 0;
 
-          if (align === 'left') {
-            ctx.textAlign = 'left';
-            ctx.fillText(cap.text, cx - rectW / 2 + padX, cy);
-            if (strokeEnabled) ctx.strokeText(cap.text, cx - rectW / 2 + padX, cy);
-          } else if (align === 'right') {
-            ctx.textAlign = 'right';
-            ctx.fillText(cap.text, cx + rectW / 2 - padX, cy);
-            if (strokeEnabled) ctx.strokeText(cap.text, cx + rectW / 2 - padX, cy);
-          } else {
-            ctx.textAlign = 'center';
-            ctx.fillText(cap.text, cx, cy);
-            if (strokeEnabled) ctx.strokeText(cap.text, cx, cy);
-          }
+          // Top of text block, vertically centred around cy
+          const textBlockTop = cy - (lineHeight * captionLines.length) / 2 + lineHeight / 2;
+
+          captionLines.forEach((line, lineIndex) => {
+            const x = align === 'left'
+              ? cx - rectW / 2 + padX
+              : align === 'right'
+                ? cx + rectW / 2 - padX
+                : cx;
+            const y = textBlockTop + lineIndex * lineHeight;
+
+            ctx.textAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
+            ctx.fillText(line, x, y);
+            if (strokeEnabled) ctx.strokeText(line, x, y);
+          });
 
           ctx.shadowBlur = 0;
         });
@@ -442,6 +482,18 @@ export function drawPhotoStripToCanvas(canvas, options) {
         } catch (e) {
           console.warn('Custom overlay frame skipped:', e);
         }
+      }
+
+      // ── 14. Watermark ───────────────────────────────────────
+      if (watermarkText && watermarkOpacity > 0) {
+        ctx.save();
+        ctx.globalAlpha = watermarkOpacity;
+        ctx.font = 'bold 11px "Plus Jakarta Sans", sans-serif';
+        ctx.fillStyle = '#888888';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(watermarkText, stripWidth - 10, totalHeight - 6);
+        ctx.restore();
       }
 
       ctx.restore(); // restore scale transform

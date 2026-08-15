@@ -5,6 +5,7 @@ import { drawPhotoStripToCanvas } from '../utils/canvasExporter';
 import { generateAnimatedGif } from '../utils/gifExporter';
 import { playSuccessChime } from '../utils/soundEffects';
 import { AI_BACKGROUNDS, AR_PROPS } from '../utils/aiFilters';
+import { saveSetting } from '../utils/db';
 
 // ── 8 curated frame themes with rich preview colors & badges ──────
 const LAYOUTS = [
@@ -75,7 +76,20 @@ export default function Controls({
   isSaving,
   selectedLayer,
   setSelectedLayer,
+  poseGapSeconds = 3,
+  setPoseGapSeconds,
+  watermarkText = '',
+  setWatermarkText,
+  watermarkOpacity = 0.4,
+  setWatermarkOpacity,
+  // activeTab: when provided (mobile bottom sheet), only the matching section is shown.
+  // null / undefined = show all (desktop)
+  activeTab = null,
+  kioskMode = false,
 }) {
+  // Helper: returns true when a section should be visible.
+  // If no activeTab is set (desktop) all sections show.
+  const show = (tab) => !activeTab || activeTab === tab;
   const exportCanvasRef = useRef(null);
   const customBgInputRef = useRef(null);
   const customFrameInputRef = useRef(null);
@@ -139,6 +153,8 @@ export default function Controls({
       resolutionScale: scale,
       customFrameUrl: customFrameDataUrl,
       customBgDataUrl,
+      watermarkText: watermarkText || '',
+      watermarkOpacity: watermarkOpacity ?? 0.4,
     });
   };
 
@@ -185,6 +201,8 @@ export default function Controls({
         doodlePaths: doodlePaths || [],
         customBgDataUrl,
         customFrameUrl: customFrameDataUrl,
+        watermarkText: watermarkText || '',
+        watermarkOpacity: watermarkOpacity ?? 0.4,
       });
       playSuccessChime();
       confetti({ particleCount: 90, spread: 80, origin: { y: 0.6 } });
@@ -248,8 +266,8 @@ export default function Controls({
     <div className="controls-v2">
       <canvas ref={exportCanvasRef} style={{ display: 'none' }} />
 
-      {/* 🎞️ 0. LAYOUT SELECTOR */}
-      <div className="cv2-section">
+      {/* 🎞️ 0. LAYOUT SELECTOR — visible on "layout" tab */}
+      {show('layout') && <div className="cv2-section">
         <div className="cv2-label">
           <span className="cv2-label-icon cv2-icon-cyan"><Film size={15} /></span>
           <span>Layout Strip</span>
@@ -273,10 +291,10 @@ export default function Controls({
             </button>
           ))}
         </div>
-      </div>
+      </div>}
 
-      {/* 🎨 1. FRAME THEMES */}
-      <div className="cv2-section">
+      {/* 🎨 1. FRAME THEMES — visible on "frame" tab */}
+      {show('frame') && <div className="cv2-section">
         <div className="cv2-label">
           <span className="cv2-label-icon cv2-icon-pink"><Palette size={15} /></span>
           <span>Pilih Frame Studio</span>
@@ -332,6 +350,7 @@ export default function Controls({
           </button>
 
           {/* Upload Custom Overlay Frame PNG (Canva / Photoshop / Event Logo) */}
+          {!kioskMode && <>
           <input
             type="file"
             ref={customFrameInputRef}
@@ -384,8 +403,9 @@ export default function Controls({
               <span className="cv2-theme-badge" style={{ color: '#FF6584', background: 'rgba(255,101,132,0.1)' }}>RESET</span>
             </button>
           )}
+          </>}
         </div>
-      </div>
+      </div>}
 
       {/* 🩵 2. FILTERS */}
       <div className="cv2-section">
@@ -407,7 +427,7 @@ export default function Controls({
       </div>
 
       {/* 🌸 3. AI BACKGROUND SWAP */}
-      <div className="cv2-section">
+      {!kioskMode && <div className="cv2-section">
         <div className="cv2-label">
           <span className="cv2-label-icon cv2-icon-purple"><Sparkles size={15} /></span>
           <span>AI Background Swap</span>
@@ -463,10 +483,10 @@ export default function Controls({
             </button>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* 🎭 3b. AR LIVE PROPS */}
-      <div className="cv2-section">
+      {!kioskMode && <div className="cv2-section">
         <div className="cv2-label">
           <span className="cv2-label-icon cv2-icon-gold"><Zap size={15} /></span>
           <span>AR Live Props (Live Camera)</span>
@@ -482,7 +502,7 @@ export default function Controls({
             </button>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* ⚙️ 4. CUSTOMIZATION & STICKERS */}
       <div className="cv2-section">
@@ -575,6 +595,7 @@ export default function Controls({
           }}
         />
         <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {!kioskMode && (
           <button
             className="cv2-pill"
             onClick={() => customStickerInputRef.current?.click()}
@@ -582,6 +603,7 @@ export default function Controls({
           >
             🖼️ Upload Stiker PNG
           </button>
+          )}
         </div>
 
         {/* Custom Uploaded Image Layers */}
@@ -618,6 +640,7 @@ export default function Controls({
             }}
           />
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            {!kioskMode && (
             <button
               className="cv2-pill"
               onClick={() => customImageInputRef.current?.click()}
@@ -625,6 +648,7 @@ export default function Controls({
             >
               🖼️ Upload Gambar
             </button>
+            )}
             {placedImages.length > 0 && (
               <button
                 className="cv2-pill"
@@ -794,35 +818,37 @@ export default function Controls({
         )}
 
         {/* Floating Custom Captions Input */}
-        <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <input
-            type="text"
+        <div style={{ marginTop: '12px' }}>
+          {/* Preset Buttons */}
+          <div style={{ display:'flex', flexWrap:'wrap', gap:'5px', marginBottom:'6px' }}>
+            <span style={{ fontSize:'0.68rem', color:'#9CA3AF', width:'100%', marginBottom:'2px' }}>Preset:</span>
+            {['Best Friends Forever 💖', 'Squad Goals 🔥', 'Memories 2026 ✨', 'Bestie Vibes 🌸', 'Party Time 🎉'].map(preset => (
+              <button
+                key={preset}
+                className="cv2-pill"
+                style={{ fontSize:'0.68rem', padding:'3px 8px', minHeight:'unset' }}
+                onClick={() => setNewCaptionText(preset)}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+
+          {/* Textarea row */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <textarea
             className="cv2-title-input"
-            style={{ marginBottom: 0, flex: 1, fontSize: '0.8rem' }}
+            style={{ marginBottom: 0, flex: 1, fontSize: '0.8rem', resize: 'vertical', minHeight: '56px', maxHeight: '100px' }}
             placeholder="Tambah Teks Bebas (mis: Happy Birthday! 💖)..."
             value={newCaptionText}
+            maxLength={200}
             onChange={e => setNewCaptionText(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && newCaptionText.trim()) {
-                const newCap = {
-                  id: `cap-${Date.now()}`,
-                  text: newCaptionText.trim(),
-                  color: newCaptionColor,
-                  xPercent: 50,
-                  yPercent: 50,
-                  fontSize: 18,
-                  fontFamily: '"Outfit", sans-serif',
-                  fontWeight: 800,
-                  shadow: true,
-                  stroke: false,
-                  align: 'center',
-                };
-                if (typeof setPlacedCaptions === 'function') setPlacedCaptions(prev => [...prev, newCap]);
-                if (typeof setSelectedLayer === 'function') setSelectedLayer({ type: 'caption', id: newCap.id });
-                setNewCaptionText('');
-              }
-            }}
           />
+          <div style={{ fontSize:'0.68rem', color: newCaptionText.length >= 180 ? '#FF6584' : '#6B7280', textAlign:'right', marginTop:'2px' }}>
+            {newCaptionText.length}/200
+          </div>
+          </div>
           <input
             type="color"
             value={newCaptionColor}
@@ -855,6 +881,7 @@ export default function Controls({
           >
             Tambah Teks ✍️
           </button>
+          </div>
         </div>
 
         {/* Clear Overlays Button if any placed */}
@@ -874,8 +901,53 @@ export default function Controls({
         )}
       </div>
 
-      {/* ✏️ 4b. DOODLE / CORAT-CORET */}
+      {/* ⏸️ 4b. POSE GAP SELECTOR — Requirements 2.1, 2.5 */}
       <div className="cv2-section">
+        <div className="cv2-label">
+          <span>⏸️ Jeda Antar Pose</span>
+        </div>
+        <div className="cv2-pills">
+          {[2, 3, 5].map(s => (
+            <button
+              key={s}
+              className={`cv2-pill ${poseGapSeconds === s ? 'active' : ''}`}
+              onClick={() => typeof setPoseGapSeconds === 'function' && setPoseGapSeconds(s)}
+            >
+              {s}s
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 🏷️ 4c. WATERMARK STUDIO — Requirements 3.1, 3.3, 3.5 */}
+      <div className="cv2-section">
+        <div className="cv2-label">
+          <span>🏷️ Watermark Studio</span>
+        </div>
+        <input
+          type="text"
+          className="cv2-title-input"
+          value={watermarkText}
+          onChange={e => typeof setWatermarkText === 'function' && setWatermarkText(e.target.value)}
+          placeholder="Nama studio / @instagram..."
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px' }}>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(watermarkOpacity * 100)}
+            onChange={e => typeof setWatermarkOpacity === 'function' && setWatermarkOpacity(Number(e.target.value) / 100)}
+            style={{ flex: 1 }}
+          />
+          <span style={{ fontSize: '0.78rem', color: '#9CA3AF', minWidth: '36px', textAlign: 'right' }}>
+            {Math.round(watermarkOpacity * 100)}%
+          </span>
+        </div>
+      </div>
+
+      {/* ✏️ 4d. DOODLE / CORAT-CORET */}
+      {!kioskMode && <div className="cv2-section">
         <div className="cv2-label">
           <span className="cv2-label-icon cv2-icon-pink"><Edit3 size={15} /></span>
           <span>Doodle / Corat-Coret Strip</span>
@@ -925,7 +997,7 @@ export default function Controls({
             </>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* 🚀 5. ACTION TOOLBAR */}
       <div className="cv2-actions">

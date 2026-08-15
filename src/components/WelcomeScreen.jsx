@@ -1,11 +1,58 @@
 import React, { useState } from 'react';
 import { Camera, Zap, Film, Download, Sparkles, PartyPopper } from 'lucide-react';
+import PinGateScreen from './PinGateScreen';
+import LeadCaptureModal from './LeadCaptureModal';
 
-export default function WelcomeScreen({ onStart }) {
+export default function WelcomeScreen({
+  onStart,
+  adminConfig = null,
+  onAdminAccess,
+  leadCaptureEnabled = false,
+  onLeadSubmit,
+  onLeadSkip,
+}) {
   const [eventName, setEventName] = useState('');
+  const [pinPassed, setPinPassed] = useState(false);
+  const [showLeadCapture, setShowLeadCapture] = useState(false);
+
+  const pinEnabled =
+    adminConfig?.pinEventEnabled && adminConfig?.pinEventValue;
+
+  // Show PIN gate if PIN is active and not yet passed
+  if (pinEnabled && !pinPassed) {
+    return (
+      <PinGateScreen
+        pinValue={adminConfig.pinEventValue}
+        onSuccess={() => setPinPassed(true)}
+        onAdminAccess={onAdminAccess}
+      />
+    );
+  }
+
+  // Show lead capture modal when the CTA was clicked
+  if (showLeadCapture) {
+    return (
+      <LeadCaptureModal
+        onSubmit={(lead) => {
+          setShowLeadCapture(false);
+          onLeadSubmit?.(lead);
+          onStart({ eventName: eventName.trim() });
+        }}
+        onSkip={() => {
+          setShowLeadCapture(false);
+          onLeadSkip?.();
+          onStart({ eventName: eventName.trim() });
+        }}
+      />
+    );
+  }
 
   const handleStart = () => {
-    onStart({ eventName: eventName.trim() });
+    if (leadCaptureEnabled) {
+      setShowLeadCapture(true);
+    } else {
+      onStart({ eventName: eventName.trim() });
+    }
   };
 
   return (

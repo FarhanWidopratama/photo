@@ -1,16 +1,19 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Header from './components/Header';
+import AdminPanel from './components/AdminPanel';
 import WelcomeScreen from './components/WelcomeScreen';
 import CameraView from './components/CameraView';
 import PhotoStripPreview from './components/PhotoStripPreview';
 import Controls from './components/Controls';
+import MobileControlsTabs from './components/MobileControlsTabs';
 import PrintModal from './components/PrintModal';
 import MusicPlayer from './components/MusicPlayer';
 import GalleryModal from './components/GalleryModal';
 import CelebrationScreen from './components/CelebrationScreen';
-import { saveSession, saveSettings, loadSettings } from './utils/db';
+import { saveSession, saveSettings, loadSettings, loadAdminConfig, saveLead } from './utils/db';
 import { drawPhotoStripToCanvas } from './utils/canvasExporter';
 import { generateAnimatedGif } from './utils/gifExporter';
+import KioskIdleTimer from './components/KioskIdleTimer';
 
 const DEFAULT_SETTINGS = {
   layout: 'strip1x4',
@@ -31,6 +34,11 @@ export default function App() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [photos, setPhotos] = useState([]);
   const [showCelebration, setShowCelebration] = useState(false);
+  const [celebrationStripUrl, setCelebrationStripUrl] = useState(null);
+  const [adminConfig, setAdminConfig] = useState(null);
+  const [leadData, setLeadData] = useState(null);
+  const [kioskMode, setKioskMode] = useState(false);
+  const [kioskIdleMinutes, setKioskIdleMinutes] = useState(3);
 
   // Studio state
   const [layout, setLayout] = useState(DEFAULT_SETTINGS.layout);
@@ -54,6 +62,9 @@ export default function App() {
   const [brushSize, setBrushSize] = useState(5);
   const [arProp, setArProp] = useState('none');
   const [countdownDuration, setCountdownDuration] = useState(DEFAULT_SETTINGS.countdownDuration);
+  const [poseGapSeconds, setPoseGapSeconds] = useState(3);
+  const [watermarkText, setWatermarkText] = useState('');
+  const [watermarkOpacity, setWatermarkOpacity] = useState(0.4);
   const [selectedLayer, setSelectedLayer] = useState(null);
 
   // Modals
@@ -66,6 +77,11 @@ export default function App() {
 
   // ── Load settings ───────────────────────────────────────────
   useEffect(() => {
+    loadAdminConfig().then(cfg => {
+      setAdminConfig(cfg);
+      if (cfg?.kioskModeEnabled) setKioskMode(true);
+      if (cfg?.kioskIdleMinutes) setKioskIdleMinutes(cfg.kioskIdleMinutes);
+    }).catch(() => {});
     loadSettings().then(saved => {
       if (saved) {
         if (saved.layout)      setLayout(saved.layout);
@@ -79,6 +95,9 @@ export default function App() {
         if (saved.customBgDataUrl) setCustomBgDataUrl(saved.customBgDataUrl);
         if (saved.customFrameDataUrl) setCustomFrameDataUrl(saved.customFrameDataUrl);
         if (saved.countdownDuration) setCountdownDuration(saved.countdownDuration);
+        if (saved.poseGapSeconds    !== undefined) setPoseGapSeconds(saved.poseGapSeconds);
+        if (saved.watermarkText     !== undefined) setWatermarkText(saved.watermarkText);
+        if (saved.watermarkOpacity  !== undefined) setWatermarkOpacity(saved.watermarkOpacity);
       }
       setSettingsLoaded(true);
     }).catch(() => setSettingsLoaded(true));
@@ -90,9 +109,9 @@ export default function App() {
     if (!settingsLoaded) return;
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      saveSettings({ layout, frameTheme, filter, showGrain, showLedDate, titleText, sticker, aiBackground, customBgDataUrl, customFrameDataUrl, countdownDuration }).catch(() => {});
+      saveSettings({ layout, frameTheme, filter, showGrain, showLedDate, titleText, sticker, aiBackground, customBgDataUrl, customFrameDataUrl, countdownDuration, poseGapSeconds, watermarkText, watermarkOpacity }).catch(() => {});
     }, 1500);
-  }, [settingsLoaded, layout, frameTheme, filter, showGrain, showLedDate, titleText, sticker, aiBackground, countdownDuration]);
+  }, [settingsLoaded, layout, frameTheme, filter, showGrain, showLedDate, titleText, sticker, aiBackground, countdownDuration, poseGapSeconds, watermarkText, watermarkOpacity]);
 
   useEffect(() => { debouncedSave(); return () => clearTimeout(saveTimer.current); }, [debouncedSave]);
 
@@ -108,11 +127,34 @@ export default function App() {
     }
   };
 
-  const handleSessionComplete = (completedPhotos) => {
-    // Show celebration screen after a brief moment
-    setTimeout(() => {
-      setShowCelebration(true);
-    }, 600);
+  const handleSessionComplete = async (completedPhotos) => {
+    // Save lead data if available
+    if (leadData?.name) {
+      try {
+        const sessionId = `session_pending_${Date.now()}`;
+        await saveLead({ name: leadData.name, phone: leadData.phone || '', sessionId });
+      } catch (e) {
+        console.warn('Lead save error:', e);
+      }
+    }
+
+    // Generate strip for QR delivery
+    try {
+      const canvas = exportCanvasRef.current || document.createElement('canvas');
+      const url = await drawPhotoStripToCanvas(canvas, {
+        photos: completedPhotos, layout, frameTheme, filter,
+        showGrain, showLedDate, showQrCode: false,
+        titleText: titleText || 'LIFE 4 CUTS 📸',
+        fontStyle: 'default', sticker, doodlePaths: [],
+        customBgDataUrl, customFrameColor, watermarkText, watermarkOpacity,
+        resolutionScale: 1.0,
+      });
+      setCelebrationStripUrl(url);
+    } catch (e) {
+      setCelebrationStripUrl(null);
+    }
+
+    setTimeout(() => setShowCelebration(true), 600);
   };
 
   const handleSaveToGallery = async () => {
@@ -130,6 +172,7 @@ export default function App() {
         titleText: titleText || 'LIFE 4 CUTS 📸',
         fontStyle: 'default', sticker, doodlePaths,
         customBgDataUrl, customFrameColor, placedStickers, placedCaptions, placedImages,
+        watermarkText, watermarkOpacity,
       });
       await saveSession({ stripPng, theme: frameTheme, layout, filter, titleText, sticker });
       setSaveToast('success');
@@ -154,6 +197,7 @@ export default function App() {
         titleText: titleText || 'LIFE 4 CUTS 📸',
         fontStyle: 'default', sticker, doodlePaths, resolutionScale: 1.0,
         customBgDataUrl, customFrameColor, placedStickers, placedCaptions, placedImages,
+        watermarkText, watermarkOpacity,
       });
 
       if (target === 'native' && navigator.canShare) {
@@ -197,6 +241,7 @@ export default function App() {
         titleText: titleText || 'LIFE 4 CUTS 📸',
         fontStyle: 'default', sticker, doodlePaths, resolutionScale: 2.0,
         customBgDataUrl, customFrameColor, placedStickers, placedCaptions, placedImages,
+        watermarkText, watermarkOpacity,
       });
       const link = document.createElement('a');
       link.download = `life4cuts-${Date.now()}.png`;
@@ -215,6 +260,7 @@ export default function App() {
         titleText: titleText || 'LIFE 4 CUTS 📸',
         fontStyle: 'default', sticker, doodlePaths: [],
         customBgDataUrl, customFrameUrl: customFrameDataUrl, customFrameColor, placedStickers, placedCaptions, placedImages,
+        watermarkText, watermarkOpacity,
       });
       const link = document.createElement('a');
       link.download = `life4cuts-animation-${Date.now()}.gif`;
@@ -226,10 +272,20 @@ export default function App() {
     }
   };
 
-  if (screen === 'welcome') return <WelcomeScreen onStart={({ eventName }) => {
-    if (eventName) setTitleText(eventName);
-    setScreen('studio');
-  }} />;
+  if (screen === 'admin') return <AdminPanel onClose={() => setScreen('welcome')} />;
+
+  if (screen === 'welcome') return <WelcomeScreen
+    onStart={({ eventName }) => {
+      const baseName = eventName || (leadData?.name ? leadData.name : '');
+      if (baseName) setTitleText(baseName);
+      setScreen('studio');
+    }}
+    adminConfig={adminConfig}
+    onAdminAccess={() => setScreen('admin')}
+    leadCaptureEnabled={adminConfig?.leadCaptureEnabled || false}
+    onLeadSubmit={(lead) => setLeadData(lead)}
+    onLeadSkip={() => setLeadData(null)}
+  />;
 
   if (!settingsLoaded) {
     return (
@@ -241,10 +297,16 @@ export default function App() {
   }
 
   return (
-    <div className="app-container">
+    <div className={`app-container${kioskMode ? ' kiosk-active' : ''}`}>
       <canvas ref={exportCanvasRef} style={{ display: 'none' }} />
 
-      <Header onReset={handleReset} hasPhotos={photos.length > 0} onOpenGallery={() => setShowGallery(true)} soundEnabled={soundEnabled} setSoundEnabled={setSoundEnabled} />
+      <KioskIdleTimer
+        enabled={kioskMode}
+        idleMinutes={kioskIdleMinutes}
+        onIdle={() => { setPhotos([]); setShowCelebration(false); setScreen('welcome'); }}
+      />
+
+      {!kioskMode && <Header onReset={handleReset} hasPhotos={photos.length > 0} onOpenGallery={() => setShowGallery(true)} soundEnabled={soundEnabled} setSoundEnabled={setSoundEnabled} onOpenAdmin={() => setScreen('admin')} />}
       <MusicPlayer />
 
       {/* ── CELEBRATION SCREEN overlay ─────────────────────── */}
@@ -255,7 +317,13 @@ export default function App() {
           onDownloadGif={handleDownloadGifFromCelebration}
           onShare={handleShare}
           onPrint={() => { setShowCelebration(false); setShowPrintModal(true); }}
-          onReset={() => { setShowCelebration(false); setPhotos([]); }}
+          onReset={() => { setShowCelebration(false); setPhotos([]); setCelebrationStripUrl(null); }}
+          onRetakePhoto={(idx) => {
+            setShowCelebration(false);
+            setTimeout(() => cameraRef.current?.retakeSingleShot(idx), 300);
+          }}
+          kioskMode={kioskMode}
+          stripDataUrl={celebrationStripUrl}
         />
       )}
 
@@ -288,6 +356,7 @@ export default function App() {
             aiOutfit="none"
             arProp={arProp}
             countdownDuration={countdownDuration}
+            poseGapSeconds={poseGapSeconds}
             soundEnabled={soundEnabled}
             onSessionComplete={handleSessionComplete}
             stripPreviewNode={
@@ -319,11 +388,50 @@ export default function App() {
                 brushSize={brushSize}
                 selectedLayer={selectedLayer}
                 setSelectedLayer={setSelectedLayer}
+                watermarkText={watermarkText}
+                watermarkOpacity={watermarkOpacity}
               />
             }
           />
 
-          <Controls
+          <div className="controls-desktop-only">
+            <Controls
+              photos={photos}
+              layout={layout}               setLayout={setLayout}
+              frameTheme={frameTheme}       setFrameTheme={setFrameTheme}
+              customFrameColor={customFrameColor} setCustomFrameColor={setCustomFrameColor}
+              filter={filter}               setFilter={setFilter}
+              showGrain={showGrain}         setShowGrain={setShowGrain}
+              showLedDate={showLedDate}     setShowLedDate={setShowLedDate}
+              aiBackground={aiBackground}   setAiBackground={setAiBackground}
+              customBgDataUrl={customBgDataUrl} setCustomBgDataUrl={setCustomBgDataUrl}
+              customFrameDataUrl={customFrameDataUrl} setCustomFrameDataUrl={setCustomFrameDataUrl}
+              sticker={sticker}             setSticker={setSticker}
+              titleText={titleText}         setTitleText={setTitleText}
+              placedStickers={placedStickers} setPlacedStickers={setPlacedStickers}
+              placedCaptions={placedCaptions} setPlacedCaptions={setPlacedCaptions}
+              placedImages={placedImages}     setPlacedImages={setPlacedImages}
+              doodlePaths={doodlePaths}     setDoodlePaths={setDoodlePaths}
+              isDoodling={isDoodling}       setIsDoodling={setIsDoodling}
+              brushColor={brushColor}       setBrushColor={setBrushColor}
+              brushSize={brushSize}         setBrushSize={setBrushSize}
+              arProp={arProp}               setArProp={setArProp}
+              showQrCode={showQrCode}
+              onOpenPrint={() => setShowPrintModal(true)}
+              onSaveToGallery={handleSaveToGallery}
+              isSaving={isSaving}
+              selectedLayer={selectedLayer}
+              setSelectedLayer={setSelectedLayer}
+              poseGapSeconds={poseGapSeconds}
+              setPoseGapSeconds={setPoseGapSeconds}
+              watermarkText={watermarkText}
+              setWatermarkText={setWatermarkText}
+              watermarkOpacity={watermarkOpacity}
+              setWatermarkOpacity={setWatermarkOpacity}
+              kioskMode={kioskMode}
+            />
+          </div>
+          <MobileControlsTabs
             photos={photos}
             layout={layout}               setLayout={setLayout}
             frameTheme={frameTheme}       setFrameTheme={setFrameTheme}
@@ -350,6 +458,15 @@ export default function App() {
             isSaving={isSaving}
             selectedLayer={selectedLayer}
             setSelectedLayer={setSelectedLayer}
+            countdownDuration={countdownDuration}
+            setCountdownDuration={setCountdownDuration}
+            poseGapSeconds={poseGapSeconds}
+            setPoseGapSeconds={setPoseGapSeconds}
+            watermarkText={watermarkText}
+            setWatermarkText={setWatermarkText}
+            watermarkOpacity={watermarkOpacity}
+            setWatermarkOpacity={setWatermarkOpacity}
+            kioskMode={kioskMode}
           />
         </div>
 
@@ -383,13 +500,17 @@ export default function App() {
             brushSize={brushSize}
             selectedLayer={selectedLayer}
             setSelectedLayer={setSelectedLayer}
+            watermarkText={watermarkText}
+            watermarkOpacity={watermarkOpacity}
           />
         </div>
       </main>
 
-      <footer style={{ marginTop: 'auto', paddingTop: '32px', textAlign: 'center', fontSize: '0.78rem', color: '#4B5563' }}>
-        <p>© 2026 LIFE 4 CUTS • Korean Photobooth Studio</p>
-      </footer>
+      {!kioskMode && (
+        <footer style={{ marginTop: 'auto', paddingTop: '32px', textAlign: 'center', fontSize: '0.78rem', color: '#4B5563' }}>
+          <p>© 2026 LIFE 4 CUTS • Korean Photobooth Studio</p>
+        </footer>
+      )}
 
       {showPrintModal && (
         <PrintModal

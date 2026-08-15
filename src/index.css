@@ -2013,7 +2013,17 @@ body {
     gap: 20px;
   }
 
+  /* ── Studio Layout: single column, hide large right strip panel ── */
+  .studio-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: unset !important;
+  }
+
+  /* Hide the large right-column strip preview on mobile;
+     the inline strip preview inside CameraView is shown instead */
   .studio-right {
+    display: none !important;
     position: relative !important;
     top: 0 !important;
     margin-top: 10px;
@@ -2166,21 +2176,106 @@ body {
   .print-strip-frame {
     width: 200px !important;
   }
+
+  /* ── Touch Targets: minimum 44×44px for all interactive elements ── */
+  .btn-primary {
+    min-height: 44px;
+  }
+
+  .btn-secondary {
+    min-height: 44px;
+  }
+
+  .countdown-chip {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 8px 14px;
+  }
+
+  .cv2-pill {
+    min-height: 44px;
+    padding: 10px 14px;
+  }
+
+  .cv2-toggle {
+    min-height: 44px;
+  }
+
+  .color-swatch {
+    width: 44px;
+    height: 44px;
+  }
+
+  .shot-retake-btn {
+    min-height: 44px;
+  }
+
+  .frame-theme-card {
+    min-height: 44px;
+  }
+
+  /* ── Hide non-essential footer on mobile ── */
+  footer {
+    display: none !important;
+  }
 }
 
 /* Tablet (769px - 1024px): 2-column studio layout */
 @media (min-width: 769px) and (max-width: 1024px) {
+  /* Two-column layout proportional to tablet width */
   .studio-layout {
+    display: grid !important;
     grid-template-columns: 1fr 300px;
     gap: 20px;
   }
 
+  /* App container: appropriate tablet padding (not mobile-narrow, not desktop-wide) */
+  .app-container {
+    padding: 16px 20px 48px;
+    max-width: 100%;
+  }
+
+  /* Theme grid: 3 columns fits tablet width nicely */
   .cv2-theme-grid {
     grid-template-columns: repeat(3, 1fr);
   }
 
+  /* Strip frame sized proportionally for 300px right column */
   .strip-frame-wrapper {
     width: 250px !important;
+  }
+
+  /* Countdown selector: constrain width but allow scroll if needed */
+  .countdown-selector-row {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  /* Ensure touch targets stay ≥ 44px on tablet */
+  .btn-primary {
+    min-height: 44px;
+  }
+
+  .btn-secondary {
+    min-height: 44px;
+  }
+
+  .countdown-chip {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .cv2-pill {
+    min-height: 44px;
+  }
+
+  /* Font sizes: readable on tablet (between mobile and desktop) */
+  .brand-title {
+    font-size: 1.2rem;
+  }
+
+  .camera-panel-title {
+    font-size: 0.95rem;
   }
 }
 
@@ -3010,7 +3105,7 @@ body {
   margin: 0 auto;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 768px) {
   .studio-layout {
     grid-template-columns: 1fr;
   }
@@ -4018,6 +4113,24 @@ body {
   .progress-label {
     font-size: 0.68rem;
   }
+
+  /* ── Studio column ordering per requirement 1.5:
+       header → live camera → strip preview → controls → action buttons ── */
+  .studio-left {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Inline strip preview (inside CameraView's stripPreviewNode) shown on mobile */
+  .strip-inline-mobile {
+    order: 2;
+    display: block !important;
+  }
+
+  /* Header-level non-essential elements hidden on mobile */
+  .header-status .badge-live {
+    display: none;
+  }
 }
 
 /* ── Mobile: studio layout single column polish ── */
@@ -4031,6 +4144,15 @@ body {
     justify-content: center;
     flex-wrap: wrap;
     padding: 8px 12px;
+  }
+
+  /* Countdown chips: enforce touch target on small phones */
+  .countdown-chip {
+    min-height: 44px;
+    min-width: 52px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   /* Controls sections scroll horizontally on mobile */
@@ -4056,5 +4178,301 @@ body {
     width: 100%;
     font-size: 0.95rem;
     padding: 14px 20px;
+    min-height: 52px;
+  }
+
+  /* All buttons and toggles: touch target guarantee on 640px and below */
+  .btn-secondary,
+  .cv2-toggle,
+  .cv2-pill {
+    min-height: 44px;
   }
 }
+
+/* ============================================================
+   POSE GAP OVERLAY — Jeda Antar Foto (Task 4.1)
+   ============================================================ */
+
+.pose-gap-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+  z-index: 41;
+  gap: 16px;
+}
+.pose-gap-text {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #38EF7D;
+  text-shadow: 0 0 20px rgba(56,239,125,0.6);
+  text-align: center;
+  padding: 0 20px;
+}
+.pose-gap-bar-container {
+  width: 70%;
+  height: 6px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.pose-gap-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #38EF7D, #7C5CFC);
+  border-radius: 4px;
+  transition: width 0.05s linear;
+}
+
+
+/* ============================================================
+   MOBILE CONTROLS TABS — Bottom Sheet / Tab Navigation
+   Requirement 1.2, 1.5
+   ============================================================ */
+
+/* Desktop: hide the mobile sheet entirely */
+@media (min-width: 769px) {
+  .mobile-controls-sheet { display: none !important; }
+}
+
+/* Mobile: hide the desktop-only Controls wrapper */
+@media (max-width: 768px) {
+  .controls-desktop-only { display: none !important; }
+}
+
+/* ── Sticky Bottom Tab Bar ────────────────────────────────── */
+.mobile-tab-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 900;
+  display: flex;
+  align-items: stretch;
+  background: rgba(11, 15, 23, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+  /* safe area for notch / home indicator */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.mobile-tab-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 4px 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+  min-height: 56px;
+  position: relative;
+}
+
+.mobile-tab-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 20%;
+  right: 20%;
+  height: 2px;
+  background: var(--accent-gradient);
+  border-radius: 0 0 3px 3px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.mobile-tab-btn.active {
+  color: var(--accent-pink);
+}
+
+.mobile-tab-btn.active::before {
+  opacity: 1;
+}
+
+.mobile-tab-btn:hover:not(.active) {
+  color: var(--text-sub);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.mobile-tab-emoji {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.mobile-tab-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ── Semi-transparent backdrop ───────────────────────────── */
+.mobile-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 950;
+  animation: overlayFadeIn 0.2s ease;
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Slide-up Sheet Panel ─────────────────────────────────── */
+.mobile-sheet-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 960;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card-solid);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.6);
+  /* sit above the tab bar */
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 64px);
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
+  pointer-events: none;
+}
+
+.mobile-sheet-panel.open {
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* ── Drag handle row ─────────────────────────────────────── */
+.mobile-sheet-handle-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 0 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.mobile-sheet-handle {
+  width: 40px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 2px;
+  transition: background 0.2s ease;
+}
+
+.mobile-sheet-handle-row:hover .mobile-sheet-handle {
+  background: rgba(255, 255, 255, 0.45);
+}
+
+/* ── In-panel tab switcher ───────────────────────────────── */
+.mobile-sheet-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 0 16px 10px;
+  flex-shrink: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.mobile-sheet-tabs::-webkit-scrollbar { display: none; }
+
+.mobile-sheet-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  min-height: 36px;
+}
+
+.mobile-sheet-tab:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-sub);
+}
+
+.mobile-sheet-tab.active {
+  background: var(--accent-pink-dim);
+  border-color: var(--accent-pink);
+  color: var(--accent-pink);
+}
+
+/* ── Scrollable content area ─────────────────────────────── */
+.mobile-sheet-content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px 0 8px;
+  /* Remove the outer card look — Controls provides its own styling */
+}
+
+/* Inside the sheet, Controls already has .controls-v2 which has its own
+   border/background. We soften it inside the sheet context: */
+.mobile-sheet-content .controls-v2 {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0 16px 16px;
+}
+
+
+/* ============================================================
+   PIN GATE SCREEN — Event access lock (Requirements 5.3–5.5)
+   ============================================================ */
+.pin-gate-screen { position:fixed;inset:0;z-index:99998;background:#0B0F17;display:flex;align-items:center;justify-content:center;padding:24px; }
+.pin-gate-card { background:rgba(22,28,42,0.95);border:1px solid rgba(255,255,255,0.1);border-radius:24px;padding:40px 32px;max-width:360px;width:100%;text-align:center;display:flex;flex-direction:column;gap:20px;box-shadow:0 24px 80px rgba(0,0,0,0.8); }
+.pin-gate-logo { font-size:1.4rem;font-weight:900;cursor:pointer;user-select:none; }
+.pin-gate-subtitle { font-size:0.9rem;color:#9CA3AF; }
+.pin-input { width:100%;background:rgba(0,0,0,0.3);border:1.5px solid rgba(255,255,255,0.15);border-radius:12px;color:#F3F4F6;font-size:1.8rem;font-weight:800;text-align:center;padding:14px;outline:none;letter-spacing:8px; }
+.pin-input:focus { border-color:#FF6584;box-shadow:0 0 0 3px rgba(255,101,132,0.15); }
+.pin-submit-btn { background:linear-gradient(135deg,#FF6584,#7C5CFC);color:#fff;border:none;border-radius:12px;padding:14px;font-size:1rem;font-weight:800;cursor:pointer;transition:all 0.2s; }
+.pin-submit-btn:hover { transform:translateY(-2px); }
+.pin-submit-btn:disabled { opacity:0.4;cursor:not-allowed;transform:none; }
+.pin-error { color:#FF6584;font-size:0.85rem;font-weight:600; }
+.pin-attempts-warning { color:#FFD15C;font-size:0.85rem;font-weight:600;background:rgba(255,209,92,0.1);border-radius:8px;padding:8px 12px; }
+
+/* Hide number input spinners */
+.pin-input::-webkit-outer-spin-button,
+.pin-input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.pin-input[type=number] { -moz-appearance:textfield; }
+
+/* ── Kiosk Mode Layout ─────────────────────────────────────── */
+.kiosk-active { padding: 0 !important; max-width: 100% !important; }
+.kiosk-active .studio-layout { max-width: 100%; padding: 16px; }
+
+
+/* ── Celebration Screen: Save Reminders & Retake Button ─────── */
+.save-reminder-inline { font-size:0.82rem; color:#38EF7D; font-weight:600; text-align:center; padding:6px 12px; background:rgba(56,239,125,0.08); border:1px solid rgba(56,239,125,0.2); border-radius:8px; width:100%; }
+.save-reminder-urgent { font-size:0.88rem; color:#FFD15C; font-weight:700; text-align:center; padding:8px 14px; background:rgba(255,209,92,0.1); border:1px solid rgba(255,209,92,0.3); border-radius:8px; width:100%; }
+.pulse-animation { animation: urgentPulse 1.5s ease-in-out infinite; }
+@keyframes urgentPulse { 0%,100% { opacity:0.8; transform:scale(1); } 50% { opacity:1; transform:scale(1.02); } }
+.celebration-retake-btn { position:absolute; bottom:4px; left:4px; background:rgba(0,0,0,0.7); border:none; border-radius:6px; color:white; font-size:0.85rem; cursor:pointer; min-width:44px; min-height:44px; display:flex; align-items:center; justify-content:center; transition:background 0.2s; z-index:5; }
+.celebration-retake-btn:hover { background:rgba(255,101,132,0.85); }
