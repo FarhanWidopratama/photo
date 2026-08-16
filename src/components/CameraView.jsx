@@ -218,80 +218,54 @@ const CameraView = forwardRef(function CameraView({
       const video = videoRef.current;
       const canvas = liveCanvasRef.current;
 
-      if (video && canvas) {
-        // Check if video is ready to render
-        if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-          const w = video.videoWidth;
-          const h = video.videoHeight;
+      if (!video || !canvas) {
+        animId = requestAnimationFrame(renderLoop);
+        return;
+      }
 
-          // Sync canvas size once
-          if (canvas.width !== w || canvas.height !== h) {
-            canvas.width = w;
-            canvas.height = h;
+      // Ensure canvas has size
+      if (canvas.width === 0 || canvas.height === 0) {
+        // Use default size if video not ready yet
+        canvas.width = canvas.width || 640;
+        canvas.height = canvas.height || 480;
+      }
+
+      // Try to draw if video is available
+      if (video.readyState >= 2) {
+        try {
+          // Update canvas size if video size changed
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
+            if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+              canvas.width = video.videoWidth;
+              canvas.height = video.videoHeight;
+            }
           }
 
-          const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: false });
-          if (!ctx) {
-            console.error('[CameraView] Failed to get 2D context');
-            animId = requestAnimationFrame(renderLoop);
-            return;
-          }
-
-          try {
-            // Simple: just draw the video
-            if (!aiBackground || aiBackground === 'none') {
-              // No AI background - simple mirror + draw
-              ctx.save();
-              if (isMirrored) {
-                ctx.translate(w, 0);
-                ctx.scale(-1, 1);
-              }
-              ctx.drawImage(video, 0, 0, w, h);
-              ctx.restore();
-            } else {
-              // With AI background
-              try {
-                drawAiBackgroundScene(ctx, w, h, aiBackground, customBgImgRef.current);
-                renderSegmentedUserOnCanvas(ctx, video, maskRef.current, w, h, isMirrored);
-              } catch (aiErr) {
-                // Fallback: just show regular video if AI fails
-                ctx.save();
-                if (isMirrored) {
-                  ctx.translate(w, 0);
-                  ctx.scale(-1, 1);
-                }
-                ctx.drawImage(video, 0, 0, w, h);
-                ctx.restore();
-              }
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            // SIMPLE: Just draw the video straight, no AI complexity first
+            ctx.save();
+            if (isMirrored) {
+              ctx.translate(canvas.width, 0);
+              ctx.scale(-1, 1);
             }
-
-            // Draw overlays
-            const activeProp = arProp !== 'none' ? arProp : activeOverlay;
-            if (activeProp && activeProp !== 'none') {
-              try {
-                drawArPropToCanvas(ctx, w, h, activeProp);
-              } catch (e) {
-                console.warn('[CameraView] Overlay draw error:', e);
-              }
-            }
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            ctx.restore();
 
             frameCount++;
-            if (frameCount % 300 === 0) {
-              console.debug('[CameraView] Render loop active:', { videoW: w, videoH: h, canvasW: canvas.width, canvasH: canvas.height });
-            }
-          } catch (e) {
-            console.error('[CameraView] Critical render error:', e);
           }
-        } else {
-          // Video not ready yet
-          if (frameCount === 0) {
-            console.debug('[CameraView] Waiting for video...', { 
-              readyState: video.readyState, 
-              videoWidth: video.videoWidth, 
-              videoHeight: video.videoHeight 
-            });
-          }
+        } catch (e) {
+          console.error('[CameraView] Canvas draw error:', e.message);
         }
+      } else if (frameCount === 0) {
+        // Log once on start
+        console.debug('[CameraView] Video not ready:', {
+          readyState: video.readyState,
+          videoWidth: video.videoWidth,
+          videoHeight: video.videoHeight,
+          canvasW: canvas.width,
+          canvasH: canvas.height
+        });
       }
 
       animId = requestAnimationFrame(renderLoop);
@@ -302,7 +276,7 @@ const CameraView = forwardRef(function CameraView({
     return () => {
       if (animId) cancelAnimationFrame(animId);
     };
-  }, [aiBackground, activeOverlay, arProp, isMirrored]);
+  }, [isMirrored]);
 
   const captureSingleFrame = () => {
     const liveCanvas = liveCanvasRef.current;
