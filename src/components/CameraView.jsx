@@ -82,6 +82,7 @@ const CameraView = forwardRef(function CameraView({
       }
 
       try {
+        console.log('[CameraView] Starting camera setup...');
         let userStream;
         try {
           userStream = await navigator.mediaDevices.getUserMedia({
@@ -93,7 +94,9 @@ const CameraView = forwardRef(function CameraView({
             },
             audio: false
           });
+          console.log('[CameraView] High-res camera granted');
         } catch (e) {
+          console.warn('[CameraView] High-res camera failed, trying fallback:', e.name);
           if (['OverconstrainedError', 'NotFoundError', 'NotReadableError'].includes(e.name)) {
             try {
               userStream = await navigator.mediaDevices.getUserMedia({
@@ -105,8 +108,10 @@ const CameraView = forwardRef(function CameraView({
                 },
                 audio: false
               });
+              console.log('[CameraView] Medium-res camera granted');
             } catch {
               userStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+              console.log('[CameraView] Generic camera granted (any resolution)');
             }
           } else {
             throw e;
@@ -117,16 +122,32 @@ const CameraView = forwardRef(function CameraView({
         if (videoRef.current) {
           videoRef.current.srcObject = userStream;
           videoRef.current.muted = true;
+          
+          // Better video initialization
           videoRef.current.onloadedmetadata = () => {
-            console.log('Video metadata loaded:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
+            console.log('[CameraView] Video metadata loaded:', {
+              width: videoRef.current?.videoWidth,
+              height: videoRef.current?.videoHeight,
+              readyState: videoRef.current?.readyState
+            });
           };
-          await videoRef.current.play().catch((e) => {
-            console.warn('Video play warning:', e);
-          });
+          
+          // Play with error handling
+          const playPromise = videoRef.current.play();
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                console.log('[CameraView] Video playing successfully');
+              })
+              .catch((err) => {
+                console.warn('[CameraView] Video play error (may resume):', err);
+              });
+          }
         }
         setCameraError(null);
+        console.log('[CameraView] Camera setup complete');
       } catch (err) {
-        console.error('Webcam error:', err);
+        console.error('[CameraView] Webcam error:', err);
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
           setCameraError('Akses kamera ditolak. Izinkan kamera di ikon gembok / izin situs pada browser.');
         } else {
@@ -191,36 +212,35 @@ const CameraView = forwardRef(function CameraView({
   // ── Continuous Live Canvas Render Loop (30-60 FPS) ────────
   useEffect(() => {
     let animId;
+    let frameCount = 0;
 
     const renderLoop = () => {
       const video = videoRef.current;
       const canvas = liveCanvasRef.current;
 
       if (video && canvas) {
-        // Wait until video has actual frame data
+        // Check if video is ready to render
         if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
           const w = video.videoWidth;
           const h = video.videoHeight;
 
-          // Sync canvas size to video
+          // Sync canvas size once
           if (canvas.width !== w || canvas.height !== h) {
             canvas.width = w;
             canvas.height = h;
           }
 
-          const ctx = canvas.getContext('2d', { alpha: false });
+          const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: false });
           if (!ctx) {
-            console.error('Failed to get canvas 2d context');
+            console.error('[CameraView] Failed to get 2D context');
             animId = requestAnimationFrame(renderLoop);
             return;
           }
 
-          // Draw video frame
           try {
-            if (aiBackground && aiBackground !== 'none') {
-              drawAiBackgroundScene(ctx, w, h, aiBackground, customBgImgRef.current);
-              renderSegmentedUserOnCanvas(ctx, video, maskRef.current, w, h, isMirrored);
-            } else {
+            // Simple: just draw the video
+            if (!aiBackground || aiBackground === 'none') {
+              // No AI background - simple mirror + draw
               ctx.save();
               if (isMirrored) {
                 ctx.translate(w, 0);
@@ -228,14 +248,48 @@ const CameraView = forwardRef(function CameraView({
               }
               ctx.drawImage(video, 0, 0, w, h);
               ctx.restore();
+            } else {
+              // With AI background
+              try {
+                drawAiBackgroundScene(ctx, w, h, aiBackground, customBgImgRef.current);
+                renderSegmentedUserOnCanvas(ctx, video, maskRef.current, w, h, isMirrored);
+              } catch (aiErr) {
+                // Fallback: just show regular video if AI fails
+                ctx.save();
+                if (isMirrored) {
+                  ctx.translate(w, 0);
+                  ctx.scale(-1, 1);
+                }
+                ctx.drawImage(video, 0, 0, w, h);
+                ctx.restore();
+              }
             }
 
+            // Draw overlays
             const activeProp = arProp !== 'none' ? arProp : activeOverlay;
             if (activeProp && activeProp !== 'none') {
-              drawArPropToCanvas(ctx, w, h, activeProp);
+              try {
+                drawArPropToCanvas(ctx, w, h, activeProp);
+              } catch (e) {
+                console.warn('[CameraView] Overlay draw error:', e);
+              }
+            }
+
+            frameCount++;
+            if (frameCount % 300 === 0) {
+              console.debug('[CameraView] Render loop active:', { videoW: w, videoH: h, canvasW: canvas.width, canvasH: canvas.height });
             }
           } catch (e) {
-            console.warn('Canvas draw error:', e);
+            console.error('[CameraView] Critical render error:', e);
+          }
+        } else {
+          // Video not ready yet
+          if (frameCount === 0) {
+            console.debug('[CameraView] Waiting for video...', { 
+              readyState: video.readyState, 
+              videoWidth: video.videoWidth, 
+              videoHeight: video.videoHeight 
+            });
           }
         }
       }

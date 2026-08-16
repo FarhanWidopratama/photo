@@ -4,7 +4,7 @@ import { loadAdminConfig, saveAdminConfig, getLeads, getSessions, loadSettings, 
 import { exportLeadsAsCsv } from '../utils/csvExporter';
 import { exportPhotosAsZip, exportBackupJson, importBackupJson } from '../utils/backupExporter';
 import AnalyticsDashboard from './AnalyticsDashboard';
-import { hashString, isAdminConfigured, isStrongAdminPassword } from '../utils/adminAuth';
+import { hashPassword, verifyPassword, isAdminConfigured, isStrongAdminPassword } from '../utils/adminAuth';
 import { FRAME_THEME_DEFS } from '../config/frameThemes';
 
 const ADMIN_AUTH_KEY = 'adminAuth';
@@ -24,6 +24,9 @@ export default function AdminPanel({ onClose }) {
   const [setupConfirmPassword, setSetupConfirmPassword] = useState('');
   const [setupError, setSetupError] = useState(null);
   const [passwordChangeMsg, setPasswordChangeMsg] = useState(null);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [nowTick, setNowTick] = useState(0);
   const [backupLoading, setBackupLoading] = useState(false);
   const [backupMsg, setBackupMsg] = useState(null);
   const [includePhotos, setIncludePhotos] = useState(true);
@@ -48,6 +51,19 @@ export default function AdminPanel({ onClose }) {
     getLeads().then(setLeads).catch(() => setLeads([]));
   }, []);
 
+  // Cooldown countdown after 3 failed login attempts
+  useEffect(() => {
+    if (cooldownUntil <= 0) return;
+    const timer = setInterval(() => {
+      if (Date.now() >= cooldownUntil) {
+        setCooldownUntil(0);
+        setFailedAttempts(0);
+      }
+      setNowTick(Date.now());
+    }, 500);
+    return () => clearInterval(timer);
+  }, [cooldownUntil]);
+
   function buildDefaultFormConfig(cfg) {
     return {
       leadCapture:    cfg.leadCapture    ?? false,
@@ -66,6 +82,11 @@ export default function AdminPanel({ onClose }) {
 
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
+    const remainingMs = cooldownUntil - Date.now();
+    if (remainingMs > 0) {
+      setPasswordError(`Terlalu banyak percobaan. Tunggu ${Math.ceil(remainingMs / 1000)} detik.`);
+      return;
+    }
     const cfg = await loadAdminConfig().catch(() => ({}));
     const storedHash = cfg?.passwordHash;
 
@@ -75,7 +96,7 @@ export default function AdminPanel({ onClose }) {
         setPasswordInput('');
         return;
       }
-      const hash = await hashString(passwordInput);
+      const hash = await hashPassword(passwordInput);
       await saveAdminConfig({ passwordHash: hash });
       sessionStorage.setItem(ADMIN_AUTH_KEY, 'true');
       setAdminConfig({ ...(cfg || {}), passwordHash: hash });
@@ -85,13 +106,22 @@ export default function AdminPanel({ onClose }) {
       return;
     }
 
-    const inputHash = await hashString(passwordInput);
-    if (inputHash === storedHash) {
+    const ok = await verifyPassword(passwordInput, storedHash);
+    if (ok) {
       sessionStorage.setItem(ADMIN_AUTH_KEY, 'true');
       setIsAuthenticated(true);
+      setFailedAttempts(0);
+      setCooldownUntil(0);
       setPasswordError(null);
     } else {
-      setPasswordError('Password salah');
+      const nextFails = failedAttempts + 1;
+      setFailedAttempts(nextFails);
+      if (nextFails >= 3) {
+        setCooldownUntil(Date.now() + 60000);
+        setPasswordError('Terlalu banyak percobaan. Panel terkunci 60 detik.');
+      } else {
+        setPasswordError('Password salah');
+      }
       setPasswordInput('');
     }
   };
@@ -108,7 +138,7 @@ export default function AdminPanel({ onClose }) {
       return;
     }
 
-    const hash = await hashString(setupPassword);
+    const hash = await hashPassword(setupPassword);
     await saveAdminConfig({ passwordHash: hash });
     sessionStorage.setItem(ADMIN_AUTH_KEY, 'true');
     setNeedsSetup(false);
@@ -141,8 +171,8 @@ export default function AdminPanel({ onClose }) {
       return;
     }
 
-    const inputHash = await hashString(currentPassword);
-    if (inputHash !== storedHash) {
+    const ok = await verifyPassword(currentPassword, storedHash);
+    if (!ok) {
       setPasswordChangeMsg({ ok: false, text: 'Password lama salah.' });
       return;
     }
@@ -150,7 +180,7 @@ export default function AdminPanel({ onClose }) {
       setPasswordChangeMsg({ ok: false, text: 'Password baru minimal 6 karakter.' });
       return;
     }
-    const newHash = await hashString(newPassword);
+    const newHash = await hashPassword(newPassword);
     await saveAdminConfig({ passwordHash: newHash });
     setPasswordChangeMsg({ ok: true, text: 'Password berhasil diubah.' });
     setCurrentPassword('');
@@ -174,7 +204,10 @@ export default function AdminPanel({ onClose }) {
               style={{ background:'rgba(0,0,0,0.3)',border:'1.5px solid rgba(255,255,255,0.12)',borderRadius:'10px',color:'#F3F4F6',fontSize:'1rem',padding:'12px 14px',outline:'none',width:'100%' }}
             />
             {passwordError && <p style={{ color:'#FF6584',fontSize:'0.85rem' }}>{passwordError}</p>}
-            <button type="submit" style={{ background:'linear-gradient(135deg,#FF6584,#7C5CFC)',color:'#fff',border:'none',borderRadius:'10px',padding:'13px',fontSize:'0.95rem',fontWeight:800,cursor:'pointer' }}>
+            {cooldownUntil > Date.now() && (
+              <p style={{ color:'#FFD15C',fontSize:'0.85rem' }}>⏳ Panel terkunci — coba lagi dalam {Math.ceil((cooldownUntil - Date.now()) / 1000)} detik</p>
+            )}
+            <button type="submit" disabled={cooldownUntil > Date.now()} style={{ background:'linear-gradient(135deg,#FF6584,#7C5CFC)',color:'#fff',border:'none',borderRadius:'10px',padding:'13px',fontSize:'0.95rem',fontWeight:800,cursor:cooldownUntil > Date.now() ? 'not-allowed' : 'pointer',opacity:cooldownUntil > Date.now() ? 0.5 : 1 }}>
               Masuk
             </button>
             <button type="button" onClick={onClose} style={{ background:'none',border:'none',color:'#6B7280',cursor:'pointer',fontSize:'0.85rem' }}>
