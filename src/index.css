@@ -383,6 +383,9 @@ body {
   transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   width: 100%;
   margin-top: 20px;
+  min-height: 52px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .btn-primary:hover {
@@ -410,6 +413,9 @@ body {
   gap: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
+  min-height: 44px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .btn-secondary:hover {
@@ -2031,7 +2037,9 @@ body {
 
   /* ── App Container & Padding (Mobile HP) ── */
   .app-container {
-    padding: 10px 12px 60px;
+    padding: 12px 14px 70px;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   /* ── Header Mobile HP Optimization ── */
@@ -2078,23 +2086,26 @@ body {
   .camera-wrapper {
     border-radius: var(--radius-sm);
     /* Optimize camera size for portrait mobile */
-    max-height: 60vh;
-    aspect-ratio: 4 / 3;
     width: 100%;
+    aspect-ratio: 4 / 3;
+    max-height: min(70vh, 400px);
+    overflow: hidden;
   }
 
   .webcam-feed {
     display: block;
     width: 100%;
     height: 100%;
+    object-fit: cover;
   }
 
   .camera-panel-header {
-    margin-bottom: 10px;
+    margin-bottom: 12px;
   }
 
   .camera-panel-title {
-    font-size: 0.92rem;
+    font-size: 0.95rem;
+    font-weight: 600;
   }
 
   /* Shots row responsive for mobile */
@@ -2102,12 +2113,19 @@ body {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 8px;
-    margin-top: 12px;
+    margin-top: 14px;
   }
 
   .shot-slot {
     aspect-ratio: 4 / 3;
-    min-height: 60px;
+    min-height: 70px;
+    touch-action: manipulation;
+  }
+
+  .shot-retake-btn {
+    min-height: 40px;
+    min-width: 40px;
+    padding: 6px 8px;
   }
 
   /* ── Controls V2 HP Optimization ── */
@@ -2119,18 +2137,20 @@ body {
 
   .cv2-theme-grid {
     grid-template-columns: repeat(2, 1fr) !important;
-    gap: 8px;
+    gap: 10px;
   }
 
   .cv2-theme-card-v2 {
-    padding: 8px 6px;
+    padding: 10px 8px;
+    min-height: 48px;
+    touch-action: manipulation;
   }
 
   .cv2-pills {
-    gap: 6px;
+    gap: 8px;
     flex-wrap: nowrap;
     overflow-x: auto;
-    padding-bottom: 4px;
+    padding-bottom: 6px;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
   }
@@ -2140,39 +2160,45 @@ body {
   }
 
   .cv2-pill {
-    padding: 6px 12px;
-    font-size: 0.75rem;
+    padding: 8px 14px;
+    font-size: 0.78rem;
     flex-shrink: 0;
-    min-height: 36px;
+    min-height: 42px;
+    touch-action: manipulation;
   }
 
   .cv2-toggle {
-    min-height: 40px;
-    padding: 8px 10px;
-    font-size: 0.75rem;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 0.78rem;
+    touch-action: manipulation;
   }
 
   .cv2-share-row {
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 8px;
   }
 
   .cv2-btn-share {
-    min-height: 40px;
-    font-size: 0.75rem;
-    padding: 8px 6px;
+    min-height: 44px;
+    font-size: 0.78rem;
+    padding: 10px 10px;
+    flex: 1 1 auto;
+    min-width: 70px;
   }
 
   .cv2-btn-download {
-    min-height: 48px;
-    font-size: 0.9rem;
-    padding: 12px;
+    min-height: 52px;
+    font-size: 0.92rem;
+    padding: 14px 16px;
+    width: 100%;
   }
 
   .cv2-btn-print,
   .cv2-btn-gallery {
-    min-height: 42px;
-    font-size: 0.78rem;
+    min-height: 48px;
+    font-size: 0.82rem;
+    padding: 12px 14px;
   }
 
   /* ── Photo Strip Preview Mobile ── */
@@ -2240,6 +2266,50 @@ body {
   /* ── Hide non-essential footer on mobile ── */
   footer {
     display: none !important;
+  }
+}
+
+/* Mobile Landscape (max-height: 500px) – adjust for wide-but-short screens */
+@media (max-height: 500px) and (orientation: landscape) {
+  .app-container {
+    padding: 8px 12px 48px;
+  }
+
+  .app-header {
+    margin-bottom: 8px;
+    padding: 8px 10px;
+  }
+
+  .camera-wrapper {
+    max-height: 45vh;
+  }
+
+  .camera-panel-title {
+    font-size: 0.85rem;
+  }
+
+  .shots-row {
+    margin-top: 8px;
+    gap: 6px;
+  }
+
+  .shot-slot {
+    min-height: 50px;
+  }
+
+  .controls-v2 {
+    padding: 12px 10px;
+    gap: 12px;
+  }
+
+  .cv2-pill {
+    min-height: 38px;
+    padding: 6px 10px;
+  }
+
+  .btn-primary {
+    padding: 10px 12px;
+    min-height: 42px;
   }
 }
 
@@ -4285,14 +4355,16 @@ body {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 10px 4px 8px;
+  padding: 12px 6px 10px;
   background: transparent;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
   transition: color 0.2s ease, background 0.2s ease;
-  min-height: 56px;
+  min-height: 60px;
   position: relative;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .mobile-tab-btn::before {
