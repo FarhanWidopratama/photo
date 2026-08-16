@@ -21,11 +21,31 @@
     
     <!-- Global error handler for async operations -->
     <script>
+      // Suppress extension-related errors early
       window.addEventListener('error', function(event) {
-        console.error('Global error caught:', event.error);
+        const message = event.message || event.error?.message || '';
+        if (
+          message.includes('message channel closed') ||
+          message.includes('listener indicated an asynchronous response') ||
+          message.includes('Extension context invalidated') ||
+          message.includes('The message port closed')
+        ) {
+          event.preventDefault();
+          return false;
+        }
       }, true);
+      
       window.addEventListener('unhandledrejection', function(event) {
-        console.warn('Unhandled rejection:', event.reason);
+        const message = event.reason?.message || String(event.reason);
+        if (
+          message.includes('message channel closed') ||
+          message.includes('listener indicated an asynchronous response') ||
+          message.includes('Extension context invalidated') ||
+          message.includes('The message port closed')
+        ) {
+          event.preventDefault();
+          return;
+        }
       });
     </script>
   </head>
