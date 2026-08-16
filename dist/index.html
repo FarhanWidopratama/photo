@@ -18,7 +18,17 @@
     <!-- MediaPipe Selfie Segmentation for AI Background Swap -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
-    <script type="module" crossorigin src="/assets/index-hEffrEFI.js"></script>
+    
+    <!-- Global error handler for async operations -->
+    <script>
+      window.addEventListener('error', function(event) {
+        console.error('Global error caught:', event.error);
+      }, true);
+      window.addEventListener('unhandledrejection', function(event) {
+        console.warn('Unhandled rejection:', event.reason);
+      });
+    </script>
+    <script type="module" crossorigin src="/assets/index-62SsQ-kv.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-C-r_qahI.css">
   </head>
   <body>
