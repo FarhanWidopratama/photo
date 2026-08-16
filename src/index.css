@@ -4121,12 +4121,6 @@ body {
     flex-direction: column;
   }
 
-  /* Inline strip preview (inside CameraView's stripPreviewNode) shown on mobile */
-  .strip-inline-mobile {
-    order: 2;
-    display: block !important;
-  }
-
   /* Header-level non-essential elements hidden on mobile */
   .header-status .badge-live {
     display: none;

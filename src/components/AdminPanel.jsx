@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Lock, Settings, BarChart2, Users, Archive } from 'lucide-react';
-import { loadAdminConfig, saveAdminConfig, getLeads, getSessions, loadSettings } from '../utils/db';
+import { loadAdminConfig, saveAdminConfig, getLeads, getSessions, loadSettings, restoreBackup } from '../utils/db';
 import { exportLeadsAsCsv } from '../utils/csvExporter';
 import { exportPhotosAsZip, exportBackupJson, importBackupJson } from '../utils/backupExporter';
 import AnalyticsDashboard from './AnalyticsDashboard';
+import { hashString, isAdminConfigured, isStrongAdminPassword } from '../utils/adminAuth';
+import { FRAME_THEME_DEFS } from '../config/frameThemes';
 
 const ADMIN_AUTH_KEY = 'adminAuth';
-const DEFAULT_PASSWORD = 'admin1234';
 
 export default function AdminPanel({ onClose }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -19,22 +20,29 @@ export default function AdminPanel({ onClose }) {
   const [configSaved, setConfigSaved] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [setupPassword, setSetupPassword] = useState('');
+  const [setupConfirmPassword, setSetupConfirmPassword] = useState('');
+  const [setupError, setSetupError] = useState(null);
   const [passwordChangeMsg, setPasswordChangeMsg] = useState(null);
   const [backupLoading, setBackupLoading] = useState(false);
   const [backupMsg, setBackupMsg] = useState(null);
+  const [includePhotos, setIncludePhotos] = useState(true);
+  const [needsSetup, setNeedsSetup] = useState(false);
   const backupFileInputRef = useRef(null);
 
   useEffect(() => {
-    // Check sessionStorage for existing auth
     if (sessionStorage.getItem(ADMIN_AUTH_KEY) === 'true') {
       setIsAuthenticated(true);
     }
+
     loadAdminConfig().then(cfg => {
       const loaded = cfg || {};
       setAdminConfig(loaded);
+      setNeedsSetup(!isAdminConfigured(loaded));
       setFormConfig(buildDefaultFormConfig(loaded));
     }).catch(() => {
       setAdminConfig({});
+      setNeedsSetup(true);
       setFormConfig(buildDefaultFormConfig({}));
     });
     getLeads().then(setLeads).catch(() => setLeads([]));
@@ -60,19 +68,25 @@ export default function AdminPanel({ onClose }) {
     e.preventDefault();
     const cfg = await loadAdminConfig().catch(() => ({}));
     const storedHash = cfg?.passwordHash;
-    
-    // Hash the input using SHA-256
-    const encoder = new TextEncoder();
-    const data = encoder.encode(passwordInput);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const inputHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    
-    // If no password has been set yet, use default
-    const defaultHash = await hashString(DEFAULT_PASSWORD);
-    const correctHash = storedHash || defaultHash;
-    
-    if (inputHash === correctHash) {
+
+    if (!storedHash) {
+      if (!isStrongAdminPassword(passwordInput)) {
+        setPasswordError('Password minimal 6 karakter.');
+        setPasswordInput('');
+        return;
+      }
+      const hash = await hashString(passwordInput);
+      await saveAdminConfig({ passwordHash: hash });
+      sessionStorage.setItem(ADMIN_AUTH_KEY, 'true');
+      setAdminConfig({ ...(cfg || {}), passwordHash: hash });
+      setIsAuthenticated(true);
+      setNeedsSetup(false);
+      setPasswordError(null);
+      return;
+    }
+
+    const inputHash = await hashString(passwordInput);
+    if (inputHash === storedHash) {
       sessionStorage.setItem(ADMIN_AUTH_KEY, 'true');
       setIsAuthenticated(true);
       setPasswordError(null);
@@ -82,16 +96,36 @@ export default function AdminPanel({ onClose }) {
     }
   };
 
-  const hashString = async (str) => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(str);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const handleSetupPassword = async (e) => {
+    e.preventDefault();
+    if (!isStrongAdminPassword(setupPassword)) {
+      setSetupError('Password minimal 6 karakter.');
+      return;
+    }
+
+    if (setupPassword !== setupConfirmPassword) {
+      setSetupError('Konfirmasi password tidak cocok.');
+      return;
+    }
+
+    const hash = await hashString(setupPassword);
+    await saveAdminConfig({ passwordHash: hash });
+    sessionStorage.setItem(ADMIN_AUTH_KEY, 'true');
+    setNeedsSetup(false);
+    setIsAuthenticated(true);
+    setSetupError(null);
+    setSetupPassword('');
+    setSetupConfirmPassword('');
   };
 
   const handleSaveConfig = async () => {
-    await saveAdminConfig(formConfig);
+    const ok = await saveAdminConfig(formConfig);
+    if (!ok) {
+      setConfigSaveError(true);
+      setConfigSaved(false);
+      return;
+    }
+    setConfigSaveError(false);
     setConfigSaved(true);
     setTimeout(() => { window.location.reload(); }, 800);
   };
@@ -100,15 +134,20 @@ export default function AdminPanel({ onClose }) {
     e.preventDefault();
     setPasswordChangeMsg(null);
     const cfg = await loadAdminConfig().catch(() => ({})) || {};
-    const defaultHash = await hashString(DEFAULT_PASSWORD);
-    const storedHash = cfg.passwordHash || defaultHash;
+    const storedHash = cfg.passwordHash;
+
+    if (!storedHash) {
+      setPasswordChangeMsg({ ok: false, text: 'Silakan set up password admin terlebih dahulu.' });
+      return;
+    }
+
     const inputHash = await hashString(currentPassword);
     if (inputHash !== storedHash) {
       setPasswordChangeMsg({ ok: false, text: 'Password lama salah.' });
       return;
     }
-    if (!newPassword || newPassword.length < 4) {
-      setPasswordChangeMsg({ ok: false, text: 'Password baru minimal 4 karakter.' });
+    if (!isStrongAdminPassword(newPassword)) {
+      setPasswordChangeMsg({ ok: false, text: 'Password baru minimal 6 karakter.' });
       return;
     }
     const newHash = await hashString(newPassword);
@@ -118,7 +157,7 @@ export default function AdminPanel({ onClose }) {
     setNewPassword('');
   };
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !needsSetup && !needsSetup) {
     return (
       <div style={{ position:'fixed',inset:0,zIndex:99999,background:'rgba(0,0,0,0.85)',backdropFilter:'blur(8px)',display:'flex',alignItems:'center',justifyContent:'center',padding:'24px' }}>
         <div style={{ background:'rgba(18,22,36,0.98)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:'24px',padding:'40px 32px',maxWidth:'380px',width:'100%',display:'flex',flexDirection:'column',gap:'20px',textAlign:'center' }}>
@@ -137,6 +176,42 @@ export default function AdminPanel({ onClose }) {
             {passwordError && <p style={{ color:'#FF6584',fontSize:'0.85rem' }}>{passwordError}</p>}
             <button type="submit" style={{ background:'linear-gradient(135deg,#FF6584,#7C5CFC)',color:'#fff',border:'none',borderRadius:'10px',padding:'13px',fontSize:'0.95rem',fontWeight:800,cursor:'pointer' }}>
               Masuk
+            </button>
+            <button type="button" onClick={onClose} style={{ background:'none',border:'none',color:'#6B7280',cursor:'pointer',fontSize:'0.85rem' }}>
+              Batalkan
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  if (needsSetup && !isAuthenticated) {
+    return (
+      <div style={{ position:'fixed',inset:0,zIndex:99999,background:'rgba(0,0,0,0.85)',backdropFilter:'blur(8px)',display:'flex',alignItems:'center',justifyContent:'center',padding:'24px' }}>
+        <div style={{ background:'rgba(18,22,36,0.98)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:'24px',padding:'40px 32px',maxWidth:'420px',width:'100%',display:'flex',flexDirection:'column',gap:'20px',textAlign:'center' }}>
+          <div style={{ fontSize:'2rem' }}>🛡️</div>
+          <h2 style={{ fontSize:'1.3rem',fontWeight:900,color:'#F3F4F6' }}>Setup Admin</h2>
+          <p style={{ fontSize:'0.85rem',color:'#9CA3AF',margin:0 }}>Belum ada password admin yang diset. Buat password baru untuk mengamankan panel admin.</p>
+          <form onSubmit={handleSetupPassword} style={{ display:'flex',flexDirection:'column',gap:'12px' }}>
+            <input
+              type="password"
+              value={setupPassword}
+              onChange={e => { setSetupPassword(e.target.value); setSetupError(null); }}
+              placeholder="Password admin baru"
+              autoFocus
+              style={{ background:'rgba(0,0,0,0.3)',border:'1.5px solid rgba(255,255,255,0.12)',borderRadius:'10px',color:'#F3F4F6',fontSize:'1rem',padding:'12px 14px',outline:'none',width:'100%' }}
+            />
+            <input
+              type="password"
+              value={setupConfirmPassword}
+              onChange={e => { setSetupConfirmPassword(e.target.value); setSetupError(null); }}
+              placeholder="Ulangi password"
+              style={{ background:'rgba(0,0,0,0.3)',border:'1.5px solid rgba(255,255,255,0.12)',borderRadius:'10px',color:'#F3F4F6',fontSize:'1rem',padding:'12px 14px',outline:'none',width:'100%' }}
+            />
+            {setupError && <p style={{ color:'#FF6584',fontSize:'0.85rem',margin:0 }}>{setupError}</p>}
+            <button type="submit" style={{ background:'linear-gradient(135deg,#FF6584,#7C5CFC)',color:'#fff',border:'none',borderRadius:'10px',padding:'13px',fontSize:'0.95rem',fontWeight:800,cursor:'pointer' }}>
+              Simpan Password Admin
             </button>
             <button type="button" onClick={onClose} style={{ background:'none',border:'none',color:'#6B7280',cursor:'pointer',fontSize:'0.85rem' }}>
               Batalkan
@@ -233,19 +308,17 @@ export default function AdminPanel({ onClose }) {
                   <label style={labelStyle}>
                     <span style={labelTextStyle}>Default Theme</span>
                     <select value={formConfig.defaultTheme} onChange={e => setFC('defaultTheme', e.target.value)} style={inputStyle}>
-                      <option value="haru_white">Haru White</option>
-                      <option value="anime_sakura">Anime Sakura</option>
-                      <option value="anime_chibi">Anime Chibi</option>
-                      <option value="dark_neon">Dark Neon</option>
-                      <option value="pastel_dream">Pastel Dream</option>
+                      {FRAME_THEME_DEFS.filter(t => !t.id.startsWith('custom_')).map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
                     </select>
                   </label>
                   <label style={labelStyle}>
-                    <span style={labelTextStyle}>Default Filter</span>
+                    <span style={labelTextStyle}>Filter Default</span>
                     <select value={formConfig.defaultFilter} onChange={e => setFC('defaultFilter', e.target.value)} style={inputStyle}>
-                      <option value="normal">Normal</option>
+                      <option value="normal">Asli</option>
                       <option value="haru_soft">Haru Soft</option>
-                      <option value="photomatic_mono">Photomatic Mono</option>
+                      <option value="photomatic_mono">Hitam Putih</option>
                       <option value="vivid">Vivid</option>
                       <option value="vintage">Vintage</option>
                     </select>
@@ -271,6 +344,11 @@ export default function AdminPanel({ onClose }) {
                 <button onClick={handleSaveConfig} style={btnPrimaryStyle} disabled={configSaved}>
                   {configSaved ? '✅ Tersimpan, memuat ulang...' : '💾 Simpan Konfigurasi'}
                 </button>
+                {configSaveError && (
+                  <p style={{ fontSize:'0.82rem',color:'#FF6584',margin:'10px 0 0',textAlign:'center' }}>
+                    ⚠️ Gagal menyimpan konfigurasi (kemungkinan penyimpanan browser penuh atau mode private). Coba lagi.
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -391,8 +469,8 @@ export default function AdminPanel({ onClose }) {
                     setBackupLoading(true);
                     setBackupMsg(null);
                     try {
-                      const [sessions, settings] = await Promise.all([getSessions(), loadSettings()]);
-                      exportBackupJson(sessions, settings);
+                      const [sessions, settings, adminConfig] = await Promise.all([getSessions(), loadSettings(), loadAdminConfig()]);
+                      exportBackupJson({ sessions, settings, leads, adminConfig, includePhotos });
                       setBackupMsg({ ok:true, text:'✅ Backup JSON berhasil diunduh.' });
                     } catch (e) {
                       setBackupMsg({ ok:false, text:'❌ Gagal mengekspor backup: ' + e.message });
@@ -404,6 +482,16 @@ export default function AdminPanel({ onClose }) {
                 >
                   💾 Export Backup Lengkap (JSON)
                 </button>
+
+                <label style={{ display:'flex',alignItems:'center',gap:'8px',fontSize:'0.82rem',color:'#9CA3AF',cursor:'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={includePhotos}
+                    onChange={e => setIncludePhotos(e.target.checked)}
+                    style={{ accentColor:'#FF6584',width:'16px',height:'16px' }}
+                  />
+                  Sertakan foto strip (PNG) dalam backup — file jadi lebih besar
+                </label>
               </section>
 
               {/* Import / Restore section */}
@@ -425,7 +513,17 @@ export default function AdminPanel({ onClose }) {
                     setBackupMsg(null);
                     try {
                       const data = await importBackupJson(file);
-                      setBackupMsg({ ok:true, text:`✅ Backup berhasil diimpor: ${data.sessions?.length ?? 0} sesi dari ${data.exportedAt ? new Date(data.exportedAt).toLocaleDateString('id-ID') : 'tanggal tidak diketahui'}.` });
+                      const sessionCount = data.sessions?.length ?? 0;
+                      const leadCount = data.leads?.length ?? 0;
+                      const confirmText = `Backup ini berisi ${sessionCount} sesi ${data.settings || data.adminConfig ? ', pengaturan, dan data lead (' + leadCount + ')' : ''}. ` +
+                        'Semua data saat ini (galeri, lead, pengaturan) AKAN DIGANTI. Lanjutkan restore?';
+                      if (!window.confirm(confirmText)) {
+                        setBackupMsg({ ok:false, text:'Restore dibatalkan.' });
+                        return;
+                      }
+                      const result = await restoreBackup(data);
+                      setBackupMsg({ ok:true, text:`✅ Restore selesai: ${result.sessions} sesi, ${result.leads} lead dipulihkan. Memuat ulang...` });
+                      setTimeout(() => { window.location.reload(); }, 1200);
                     } catch (e) {
                       setBackupMsg({ ok:false, text:'❌ ' + e.message });
                     } finally {

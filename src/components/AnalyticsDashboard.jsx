@@ -32,7 +32,7 @@ export default function AnalyticsDashboard() {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
-      <h3 style={{ fontSize:'1rem', fontWeight:700, color:'#F3F4F6' }}>📊 Analytics Dashboard</h3>
+      <h3 style={{ fontSize:'1rem', fontWeight:700, color:'#F3F4F6' }}>📊 Dashboard Analytics</h3>
 
       {noData ? (
         <p style={{ color:'#9CA3AF', textAlign:'center', padding:'32px 0' }}>Belum ada data sesi untuk periode ini</p>

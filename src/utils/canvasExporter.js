@@ -1,4 +1,5 @@
 import QRCode from 'qrcode';
+import { getQrColor } from '../config/frameThemes';
 
 // ============================================================
 //  Life4Cuts Photobooth — High-Res Canvas Strip Exporter
@@ -60,8 +61,11 @@ export function drawPhotoStripToCanvas(canvas, options) {
   } = options;
 
   return new Promise((resolve, reject) => {
+    if (!Array.isArray(photos)) {
+      return reject(new Error('No photos provided'));
+    }
     const realPhotos = photos.filter(Boolean);
-    if (!photos || realPhotos.length === 0) {
+    if (realPhotos.length === 0) {
       return reject(new Error('No photos provided'));
     }
 
@@ -157,6 +161,10 @@ export function drawPhotoStripToCanvas(canvas, options) {
     const totalSlots = layout === 'duo1x2' ? 2 : (layout === 'strip1x3' ? 3 : layout === 'photocard' ? 1 : 4);
     const cfg = THEME_CONFIG[frameTheme] || THEME_CONFIG.haru_white;
 
+    // Preview strip is rendered ~280px wide; scale overlay layers (stickers,
+    // captions) from preview units to export units proportionally.
+    const overlayScale = stripWidth / 280;
+
     const drawCroppedImage = (img, dx, dy, dw, dh, crop = {}) => {
       const cropZoom = Math.max(0.6, Math.min(2.5, Number(crop.cropZoom) || 1));
       const cropX = Math.max(0, Math.min(100, Number.isFinite(Number(crop.cropX)) ? Number(crop.cropX) : 50));
@@ -205,7 +213,10 @@ export function drawPhotoStripToCanvas(canvas, options) {
     // ── 5. Load & Render Photos ─────────────────────────────────
     let loadedCount = 0;
     const imgElements = [];
-    const totalToLoad = realPhotos.length;
+    // Only the photos that actually fit into the layout slots are loaded.
+    // Counting anything else would make the Promise never resolve (hang).
+    const slotsToRender = photos.slice(0, totalSlots).filter(Boolean);
+    const totalToLoad = slotsToRender.length;
 
     // Load custom background image (if set)
     let customBgImgEl = null;
@@ -327,7 +338,7 @@ export function drawPhotoStripToCanvas(canvas, options) {
         try {
           const qrDataUrl = await QRCode.toDataURL(window.location.href, {
             margin: 1,
-            color: { dark: cfg.textColor === '#FFFFFF' ? '#FFFFFF' : '#121212', light: '#00000000' }
+            color: { dark: getQrColor(frameTheme), light: '#00000000' }
           });
           const qrImg = new Image();
           await new Promise(res => { qrImg.onload = res; qrImg.src = qrDataUrl; });
@@ -338,7 +349,7 @@ export function drawPhotoStripToCanvas(canvas, options) {
 
       // ── 10. Doodle Paths ────────────────────────────────────
       if (doodlePaths && doodlePaths.length > 0) {
-        drawDoodlePaths(ctx, doodlePaths);
+        drawDoodlePaths(ctx, doodlePaths, stripWidth, totalHeight);
       }
 
       // ── 11. Draggable Placed Stickers ───────────────────────
@@ -354,7 +365,7 @@ export function drawPhotoStripToCanvas(canvas, options) {
               img.onerror = res;
               img.src = stk.imageSrc;
             });
-            const size = Math.round((stk.size || 36) * 1.8);
+            const size = Math.round((stk.size || 36) * 1.5 * overlayScale);
             ctx.save();
             ctx.translate(sx, sy);
             ctx.rotate(((stk.rotation || 0) * Math.PI) / 180);
@@ -369,7 +380,7 @@ export function drawPhotoStripToCanvas(canvas, options) {
           ctx.save();
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          const fontSize = Math.round((stk.size || 32) * 1.5);
+          const fontSize = Math.round((stk.size || 28) * overlayScale);
           ctx.font = `${fontSize}px sans-serif`;
           ctx.fillText(stk.emoji || '☆', sx, sy);
           ctx.restore();
@@ -383,7 +394,7 @@ export function drawPhotoStripToCanvas(canvas, options) {
         placedCaptions.forEach(cap => {
           const cx = (cap.xPercent / 100) * stripWidth;
           const cy = (cap.yPercent / 100) * totalHeight;
-          const fontSize = Math.round((cap.fontSize || 18) * 1.5);
+          const fontSize = Math.round((cap.fontSize || 14) * overlayScale);
           const fontFamily = cap.fontFamily || '"Outfit", sans-serif';
           const fontWeight = cap.fontWeight || 800;
           const align = cap.align || 'center';
@@ -394,7 +405,7 @@ export function drawPhotoStripToCanvas(canvas, options) {
           ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
 
           const captionLines = wrapText(ctx, cap.text || '', stripWidth * 0.85);
-          const lineHeight = (cap.fontSize || 14) * scale * 1.3;
+          const lineHeight = fontSize * 1.3;
 
           const padX = 12, padY = 6;
           // Measure the widest line for the background rect
@@ -470,9 +481,9 @@ export function drawPhotoStripToCanvas(canvas, options) {
       }
 
       // ── 11. Custom PNG Overlay Frame (Canva / Photoshop Desain) ──
-      if ((frameTheme === 'custom_png' || options.customFrameUrl) && (options.customFrameUrl || typeof window !== 'undefined' && window.customFramePngUrl)) {
+      if ((frameTheme === 'custom_png' || options.customFrameUrl) && options.customFrameUrl) {
         try {
-          const overlaySrc = options.customFrameUrl || window.customFramePngUrl;
+          const overlaySrc = options.customFrameUrl;
           const overlayImg = new Image();
           overlayImg.crossOrigin = 'anonymous';
           await new Promise(res => { overlayImg.onload = res; overlayImg.onerror = res; overlayImg.src = overlaySrc; });
@@ -700,6 +711,9 @@ function drawFrameBackground(ctx, w, h, theme, cfg, customFrameColor = null) {
   }
   const BACKGROUNDS = {
     anime_sakura:    () => fillLinear(ctx, w, h, 160, ['#FFF0F5', '#FFE4EC', '#FFD6E7', '#FFBCD9']),
+    anime_chibi:     () => fillLinear(ctx, w, h, 160, ['#FFF0F5', '#FFE4E1', '#FFD6E1']),
+    hari_guru:       () => fillLinear(ctx, w, h, 160, ['#E6F3FF', '#CCE5FF', '#B8D9FF']),
+    birthday_bash:   () => fillLinear(ctx, w, h, 160, ['#FFF9C4', '#FFE082', '#FFD54F']),
     anime_cyber:     () => {
       fillLinear(ctx, w, h, 160, ['#0A001F', '#160830', '#01111D']);
       // Scanline overlay
@@ -1133,12 +1147,25 @@ function drawLedTimestamp(ctx, x, y, w, h) {
 // ============================================================
 //  FILM GRAIN
 // ============================================================
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Deterministic grain per photo slot: same strip always renders the same
+// noise in PNG, GIF and print exports.
 function drawFilmGrain(ctx, x, y, w, h) {
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.05)';
+  const rnd = mulberry32(Math.round(x * 31 + y * 17));
   for (let gx = x; gx < x + w; gx += 4) {
     for (let gy = y; gy < y + h; gy += 4) {
-      if (Math.random() > 0.5) ctx.fillRect(gx, gy, 2, 2);
+      if (rnd() > 0.5) ctx.fillRect(gx, gy, 2, 2);
     }
   }
   ctx.restore();
@@ -1183,17 +1210,20 @@ function drawCoverImage(ctx, img, x, y, tw, th) {
 // ============================================================
 //  DOODLE PATHS
 // ============================================================
-function drawDoodlePaths(ctx, paths) {
+// Doodle paths are stored normalized (0-1) relative to the preview strip.
+// Scale them to the export canvas dimensions so the doodle lands in the
+// same spot and brush weight matches the preview proportionally.
+function drawDoodlePaths(ctx, paths, stripWidth, totalHeight) {
   ctx.save();
   paths.forEach(path => {
     if (!path.points || path.points.length < 2) return;
     ctx.beginPath();
     ctx.strokeStyle = path.color;
-    ctx.lineWidth = path.size * 2;
+    ctx.lineWidth = Math.max(1, (path.size || 0.02) * stripWidth);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.moveTo(path.points[0].x, path.points[0].y);
+    ctx.moveTo(path.points[0].x * stripWidth, path.points[0].y * totalHeight);
     for (let i = 1; i < path.points.length; i++) {
-      ctx.lineTo(path.points[i].x, path.points[i].y);
+      ctx.lineTo(path.points[i].x * stripWidth, path.points[i].y * totalHeight);
     }
     ctx.stroke();
   });

@@ -11,8 +11,8 @@ const THEME_LABELS = {
 };
 
 const LAYOUT_LABELS = {
-  strip1x4: '4-Cut Strip', grid2x2: 'Grid 2x2', hero1plus3: '1+3 Hero',
-  strip1x3: '3-Cut', duo1x2: '2-Cut Duo', filmroll: 'Film Roll',
+  strip1x4: 'Strip 4-Foto', grid2x2: 'Grid 2x2', hero1plus3: 'Hero 1+3',
+  strip1x3: '3-Foto', duo1x2: 'Duo 2-Foto', filmroll: 'Film Roll',
 };
 
 export default function GalleryModal({ onClose }) {

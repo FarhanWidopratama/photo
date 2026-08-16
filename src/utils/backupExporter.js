@@ -36,13 +36,19 @@ export async function exportPhotosAsZip(sessions) {
 }
 
 /**
- * Export sessions + settings as a JSON backup file.
+ * Export sessions + settings + leads + admin config as a JSON backup file.
+ * @param {Object} payload
+ * @param {Array}  payload.sessions
+ * @param {Object} [payload.settings]
+ * @param {Array}  [payload.leads]
+ * @param {Object} [payload.adminConfig]
+ * @param {boolean} [payload.includePhotos] - include stripPng (binary) in the backup
  */
-export function exportBackupJson(sessions, settings) {
+export function exportBackupJson({ sessions, settings, leads, adminConfig, includePhotos = true }) {
   const backup = {
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
-    sessions: sessions.map(s => ({
+    sessions: (sessions || []).map(s => ({
       id: s.id,
       date: s.date,
       dateFormatted: s.dateFormatted,
@@ -51,11 +57,13 @@ export function exportBackupJson(sessions, settings) {
       filter: s.filter,
       titleText: s.titleText,
       sticker: s.sticker,
-      // Exclude stripPng (binary data) to keep file small
+      ...(includePhotos && s.stripPng ? { stripPng: s.stripPng } : {}),
     })),
-    settings: settings || {},
+    settings: settings || null,
+    leads: leads || [],
+    adminConfig: adminConfig || null,
   };
-  
+
   const json = JSON.stringify(backup, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -67,8 +75,8 @@ export function exportBackupJson(sessions, settings) {
 }
 
 /**
- * Import and restore backup from a JSON file.
- * Returns parsed backup object after basic validation.
+ * Read and validate a backup JSON file.
+ * Returns the parsed backup object after basic validation.
  */
 export async function importBackupJson(file) {
   return new Promise((resolve, reject) => {
@@ -76,9 +84,17 @@ export async function importBackupJson(file) {
     reader.onload = (e) => {
       try {
         const data = JSON.parse(e.target.result);
-        // Basic validation
-        if (!data.version || !Array.isArray(data.sessions)) {
+        if (!data || typeof data !== 'object') {
           reject(new Error('File backup tidak valid atau rusak'));
+          return;
+        }
+        const version = Number(data.version);
+        if (!version || version < 1 || version > 2) {
+          reject(new Error('Versi backup tidak didukung. Silakan ekspor ulang dari aplikasi.'));
+          return;
+        }
+        if (data.sessions !== undefined && !Array.isArray(data.sessions)) {
+          reject(new Error('Data sesi pada backup tidak valid'));
           return;
         }
         resolve(data);

@@ -18,13 +18,25 @@ import {
   loadSetting,
   saveSettings,
   loadSettings,
+  saveSession,
+  getSessions,
+  restoreBackup,
 } from '../../utils/db.js';
 
 // Reset indexedDB between tests so state doesn't leak
 import { IDBFactory } from 'fake-indexeddb';
 
-beforeEach(() => {
-  // Replace global indexedDB with a fresh instance
+beforeEach(async () => {
+  // Replace global indexedDB with a fresh instance and clear any previous database state.
+  (globalThis as any).indexedDB = new IDBFactory();
+
+  await new Promise<void>((resolve, reject) => {
+    const deleteReq = (globalThis as any).indexedDB.deleteDatabase('Life4CutsDB');
+    deleteReq.onsuccess = () => resolve();
+    deleteReq.onerror = () => reject(deleteReq.error || new Error('Failed to reset IndexedDB'));
+    deleteReq.onblocked = () => resolve();
+  });
+
   (globalThis as any).indexedDB = new IDBFactory();
 });
 
@@ -81,6 +93,26 @@ describe('saveLead / getLeads / deleteLead', () => {
     expect(leads[0].phone).toBe('');
     expect(leads[0].sessionId).toBe('');
   });
+
+  it('dedupes leads by name+phone and updates sessionId', async () => {
+    const id1 = await saveLead({ name: 'Budi', phone: '081234567890', sessionId: 'sess_a' });
+    await new Promise(r => setTimeout(r, 5));
+    const id2 = await saveLead({ name: 'Budi', phone: '081234567890', sessionId: 'sess_b' });
+
+    expect(id2).toBe(id1);
+    const leads = await getLeads();
+    expect(leads).toHaveLength(1);
+    expect(leads[0].sessionId).toBe('sess_b');
+  });
+
+  it('keeps separate leads for different contacts', async () => {
+    await saveLead({ name: 'Budi', phone: '0811', sessionId: 'a' });
+    await saveLead({ name: 'Budi', phone: '0812', sessionId: 'b' });
+    await saveLead({ name: 'Siti', phone: '0811', sessionId: 'c' });
+
+    const leads = await getLeads();
+    expect(leads).toHaveLength(3);
+  });
 });
 
 // ──────────────────────────────────────────────
@@ -96,42 +128,62 @@ describe('saveAdminConfig / loadAdminConfig', () => {
   it('saves config and loads it back', async () => {
     await saveAdminConfig({
       passwordHash: 'abc123',
-      leadCaptureEnabled: true,
-      pinEventEnabled: false,
-      pinEventValue: '1234',
-      kioskModeEnabled: false,
-      kioskIdleMinutes: 3,
+      leadCapture: true,
+      pinEvent: false,
+      pinCode: '1234',
+      kioskMode: false,
+      idleMinutes: 3,
     });
 
     const config = await loadAdminConfig();
     expect(config).not.toBeNull();
     expect(config!.key).toBe('default');
     expect(config!.passwordHash).toBe('abc123');
-    expect(config!.leadCaptureEnabled).toBe(true);
-    expect(config!.pinEventEnabled).toBe(false);
-    expect(config!.pinEventValue).toBe('1234');
-    expect(config!.kioskModeEnabled).toBe(false);
-    expect(config!.kioskIdleMinutes).toBe(3);
+    expect(config!.leadCapture).toBe(true);
+    expect(config!.pinEvent).toBe(false);
+    expect(config!.pinCode).toBe('1234');
+    expect(config!.kioskMode).toBe(false);
+    expect(config!.idleMinutes).toBe(3);
     expect(config!.updatedAt).toBeTruthy();
   });
 
+  it('migrates legacy keys to canonical names', async () => {
+    await saveAdminConfig({
+      leadCaptureEnabled: true,
+      pinEventEnabled: false,
+      pinEventValue: '5678',
+      kioskModeEnabled: false,
+      kioskIdleMinutes: 3,
+    });
+
+    const config = await loadAdminConfig();
+    expect(config!.leadCapture).toBe(true);
+    expect(config!.pinEvent).toBe(false);
+    expect(config!.pinCode).toBe('5678');
+    expect(config!.kioskMode).toBe(false);
+    expect(config!.idleMinutes).toBe(3);
+    expect(config!.leadCaptureEnabled).toBeUndefined();
+    expect(config!.configVersion).toBeTruthy();
+  });
+
   it('merges partial updates without losing existing fields', async () => {
-    await saveAdminConfig({ passwordHash: 'hash1', pinEventEnabled: false });
-    await saveAdminConfig({ pinEventEnabled: true, kioskModeEnabled: true });
+    await saveAdminConfig({ passwordHash: 'hash1', pinEvent: false });
+    await saveAdminConfig({ pinEvent: true, kioskMode: true });
 
     const config = await loadAdminConfig();
     // Original field preserved
     expect(config!.passwordHash).toBe('hash1');
     // Updated field
-    expect(config!.pinEventEnabled).toBe(true);
+    expect(config!.pinEvent).toBe(true);
     // New field
-    expect(config!.kioskModeEnabled).toBe(true);
+    expect(config!.kioskMode).toBe(true);
   });
 
   it('always stores under key "default"', async () => {
-    await saveAdminConfig({ watermarkEnabled: true });
+    await saveAdminConfig({ watermark: true });
     const config = await loadAdminConfig();
     expect(config!.key).toBe('default');
+    expect(config!.watermark).toBe(true);
   });
 });
 
@@ -197,12 +249,59 @@ describe('DB upgrade idempotency', () => {
   it('new stores are accessible immediately after upgrade', async () => {
     // Both new stores should be functional right away
     await saveLead({ name: 'Test', phone: '000', sessionId: 'x' });
-    await saveAdminConfig({ kioskModeEnabled: false });
+    await saveAdminConfig({ kioskMode: false });
 
     const leads = await getLeads();
     const config = await loadAdminConfig();
 
     expect(leads).toHaveLength(1);
     expect(config).not.toBeNull();
+  });
+});
+
+// ──────────────────────────────────────────────
+//  BACKUP RESTORE
+// ──────────────────────────────────────────────
+
+describe('restoreBackup', () => {
+  it('replaces current data with the backup payload', async () => {
+    await saveSession({ stripPng: 'old', theme: 'old_theme' });
+    await saveLead({ name: 'Old', phone: '000', sessionId: 'old' });
+
+    const result = await restoreBackup({
+      sessions: [{ id: 'session_backup_1', date: new Date().toISOString(), theme: 'new_theme', stripPng: 'new-png' }],
+      leads: [{ id: 'lead_backup_1', name: 'New', phone: '111', sessionId: 's' }],
+      settings: { layout: 'duo1x2' },
+      adminConfig: { kioskMode: true, idleMinutes: 5 },
+    });
+
+    expect(result.sessions).toBe(1);
+    expect(result.leads).toBe(1);
+
+    const sessions = await getSessions();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].id).toBe('session_backup_1');
+    expect(sessions[0].stripPng).toBe('new-png');
+
+    const leads = await getLeads();
+    expect(leads).toHaveLength(1);
+    expect(leads[0].name).toBe('New');
+
+    const settings = await loadSettings();
+    expect(settings!.layout).toBe('duo1x2');
+
+    const config = await loadAdminConfig();
+    expect(config!.kioskMode).toBe(true);
+    expect(config!.idleMinutes).toBe(5);
+  });
+
+  it('clears stores when a section is missing from the backup', async () => {
+    await saveLead({ name: 'Lama', phone: '000', sessionId: 'x' });
+    await restoreBackup({ sessions: [], leads: [], settings: null, adminConfig: null });
+
+    const leads = await getLeads();
+    const sessions = await getSessions();
+    expect(leads).toHaveLength(0);
+    expect(sessions).toHaveLength(0);
   });
 });

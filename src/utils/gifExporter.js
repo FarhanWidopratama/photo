@@ -1,10 +1,11 @@
 import gifshot from 'gifshot';
 import { drawPhotoStripToCanvas } from './canvasExporter';
+import { getLayoutSlotCount } from '../config/layouts';
 
 /**
  * Generate an Animated GIF where each frame shows the full photo strip
- * progressively revealing photos 1→2→3→4, then all 4 together.
- * This makes the GIF look like a real studio photobooth result.
+ * progressively revealing photos 1→2→3→…N, then all together.
+ * Frame count follows the layout's slot count (2/3/4 slots).
  */
 export function generateAnimatedGif(options) {
   const {
@@ -19,23 +20,32 @@ export function generateAnimatedGif(options) {
     sticker = null,
     doodlePaths = [],
     watermarkText = null,
-    watermarkOpacity = 0.4
+    watermarkOpacity = 0.4,
+    customBgDataUrl = null,
+    customFrameUrl = null,
+    customFrameColor = null,
+    placedStickers = [],
+    placedCaptions = [],
+    placedImages = [],
   } = options;
 
   return new Promise(async (resolve, reject) => {
-    if (!photos || photos.length < 4) {
-      return reject(new Error('Minimal 4 foto diperlukan untuk membuat GIF.'));
+    const realPhotos = (photos || []).filter(Boolean);
+    if (realPhotos.length === 0) {
+      return reject(new Error('Tidak ada foto untuk membuat GIF.'));
     }
+
+    const slots = getLayoutSlotCount(layout);
 
     try {
       const canvas = document.createElement('canvas');
       const frameDataUrls = [];
 
-      // Frame 1–4: Progressive reveal — photo 1, photos 1-2, photos 1-3, all 4
-      for (let i = 0; i < 4; i++) {
-        // Fill slots: show real photos up to index i, empty (gray placeholder) for the rest
-        const progressivePhotos = Array.from({ length: 4 }, (_, idx) =>
-          idx <= i ? photos[idx] : null
+      // Progressive reveal: photo 1, photos 1-2, … all slots filled.
+      // Missing slots are rendered as empty placeholders by the exporter.
+      for (let i = 0; i < slots; i++) {
+        const progressivePhotos = Array.from({ length: slots }, (_, idx) =>
+          idx <= i ? realPhotos[idx] : null
         );
 
         const frameUrl = await drawPhotoStripToCanvas(canvas, {
@@ -50,14 +60,20 @@ export function generateAnimatedGif(options) {
           sticker: null, // Skip sticker in GIF frames for cleaner look
           doodlePaths: [], // Skip doodles in GIF for performance
           watermarkText,
-          watermarkOpacity
+          watermarkOpacity,
+          customBgDataUrl,
+          customFrameUrl,
+          customFrameColor,
+          placedStickers,
+          placedCaptions,
+          placedImages,
         });
         frameDataUrls.push(frameUrl);
       }
 
-      // Frame 5–6: Show all 4 photos twice (pause on final strip)
-      frameDataUrls.push(frameDataUrls[3]);
-      frameDataUrls.push(frameDataUrls[3]);
+      // Pause on the final strip (duplicate last frame twice)
+      frameDataUrls.push(frameDataUrls[frameDataUrls.length - 1]);
+      frameDataUrls.push(frameDataUrls[frameDataUrls.length - 1]);
 
       // Determine output dimensions from canvas
       const gifWidth = canvas.width > 800 ? Math.round(canvas.width / 2) : canvas.width;

@@ -16,13 +16,13 @@ export default function WelcomeScreen({
   const [showLeadCapture, setShowLeadCapture] = useState(false);
 
   const pinEnabled =
-    adminConfig?.pinEventEnabled && adminConfig?.pinEventValue;
+    adminConfig?.pinEvent && adminConfig?.pinCode;
 
   // Show PIN gate if PIN is active and not yet passed
   if (pinEnabled && !pinPassed) {
     return (
       <PinGateScreen
-        pinValue={adminConfig.pinEventValue}
+        pinValue={adminConfig.pinCode}
         onSuccess={() => setPinPassed(true)}
         onAdminAccess={onAdminAccess}
       />

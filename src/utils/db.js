@@ -4,6 +4,8 @@
 //          lead captures (NEW), admin config (NEW)
 // ============================================================
 
+import { normalizeAdminConfig } from '../config/adminDefaults';
+
 const DB_NAME = 'Life4CutsDB';
 const DB_VERSION = 2;  // bumped from 1 → 2
 
@@ -205,8 +207,10 @@ export async function saveSettings(settings) {
   try {
     const db = await openDB();
     await txPut(db, STORES.settings, { key: 'default', ...settings, updatedAt: new Date().toISOString() });
+    return true;
   } catch (e) {
     console.warn('saveSettings error:', e);
+    return false;
   }
 }
 
@@ -241,8 +245,10 @@ export async function saveSetting(key, value) {
       [key]: value,
       updatedAt: new Date().toISOString(),
     });
+    return true;
   } catch (e) {
     console.warn('saveSetting error:', e);
+    return false;
   }
 }
 
@@ -268,19 +274,37 @@ export async function loadSetting(key) {
 
 /**
  * Save a customer lead capture record.
+ * Dedupes by (name + phone): if a lead with the same contact already
+ * exists, its sessionId is updated (keeps the original capture date).
  * @param {Object} lead - { name, phone, sessionId }
- * @returns {string} id of the saved lead
+ * @returns {string|null} id of the saved lead, or null on failure
  */
 export async function saveLead(lead) {
   try {
     const db = await openDB();
+    const name = (lead.name || '').trim();
+    const phone = (lead.phone || '').trim();
+    const all = await txGetAll(db, STORES.leads);
+    const existing = all.find(l =>
+      (l.name || '').trim() === name &&
+      (l.phone || '').trim() === phone &&
+      (name || phone)
+    );
+
+    if (existing) {
+      if (lead.sessionId && existing.sessionId !== lead.sessionId) {
+        await txPut(db, STORES.leads, { ...existing, sessionId: lead.sessionId });
+      }
+      return existing.id;
+    }
+
     const id = `lead_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const now = new Date();
     const record = {
       id,
       sessionId: lead.sessionId || '',
-      name: lead.name || '',
-      phone: lead.phone || '',
+      name,
+      phone,
       date: now.toISOString(),
       dateFormatted: now.toLocaleDateString('id-ID', {
         day: '2-digit', month: 'long', year: 'numeric',
@@ -331,34 +355,93 @@ export async function deleteLead(id) {
  * Save admin configuration. Always stored under key 'default'.
  * Performs a read-merge-write so unset fields retain their last value.
  * @param {Object} config - Partial or full AdminConfig fields
+ * @returns {boolean} success
  */
 export async function saveAdminConfig(config) {
   try {
     const db = await openDB();
     const existing = await txGet(db, STORES.adminConfig, 'default') || {};
+    const merged = normalizeAdminConfig({ ...existing, ...config });
     await txPut(db, STORES.adminConfig, {
-      ...existing,
-      ...config,
+      ...merged,
       key: 'default',
       updatedAt: new Date().toISOString(),
     });
+    return true;
   } catch (e) {
     console.warn('saveAdminConfig error:', e);
+    return false;
   }
 }
 
 /**
  * Load admin configuration.
- * Returns null if no config has been saved yet.
- * @returns {Object|null}
+ * Legacy keys are migrated to canonical names (see config/adminDefaults).
+ * Returns defaults if no config has been saved yet.
+ * @returns {Object}
  */
 export async function loadAdminConfig() {
   try {
     const db = await openDB();
     const result = await txGet(db, STORES.adminConfig, 'default');
-    return result || null;
+    if (!result) return null;
+    return normalizeAdminConfig(result);
   } catch (e) {
     console.warn('loadAdminConfig error:', e);
     return null;
   }
+}
+
+// ============================================================
+//  BACKUP RESTORE (used by backupExporter + AdminPanel)
+// ============================================================
+
+/**
+ * Restore a full backup: replaces sessions, leads, settings and
+ * admin config with the records from the backup payload.
+ * @param {Object} backup - { sessions: [], leads: [], settings: {}, adminConfig: {} }
+ * @returns {Promise<{sessions: number, leads: number}>}
+ */
+export async function restoreBackup(backup) {
+  const db = await openDB();
+  const clearAll = async (storeName) => {
+    const all = await txGetAll(db, storeName);
+    for (const record of all) {
+      await txDelete(db, storeName, record.id ?? record.key);
+    }
+  };
+
+  await clearAll(STORES.sessions);
+  await clearAll(STORES.leads);
+  await clearAll(STORES.settings);
+  await clearAll(STORES.adminConfig);
+
+  const sessions = Array.isArray(backup.sessions) ? backup.sessions : [];
+  for (const s of sessions) {
+    if (s && s.id) await txPut(db, STORES.sessions, s);
+  }
+
+  const leads = Array.isArray(backup.leads) ? backup.leads : [];
+  for (const l of leads) {
+    if (l && l.id) await txPut(db, STORES.leads, l);
+  }
+
+  if (backup.settings && typeof backup.settings === 'object') {
+    await txPut(db, STORES.settings, {
+      key: 'default',
+      ...backup.settings,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  if (backup.adminConfig && typeof backup.adminConfig === 'object') {
+    const merged = normalizeAdminConfig(backup.adminConfig);
+    await txPut(db, STORES.adminConfig, {
+      ...merged,
+      key: 'default',
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  return { sessions: sessions.length, leads: leads.length };
 }

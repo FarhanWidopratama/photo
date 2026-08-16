@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import DoodleCanvas from './DoodleCanvas';
 import DraggableOverlayLayer from './DraggableOverlayLayer';
+import { getQrColor } from '../config/frameThemes';
 
 export default function PhotoStripPreview({
   photos,
@@ -45,18 +46,24 @@ export default function PhotoStripPreview({
   }).replace(/\//g, '.');
 
   useEffect(() => {
-    if (frameRef.current) {
+    const node = frameRef.current;
+    if (!node) return;
+    const update = () => {
       setFrameDimensions({
-        width: frameRef.current.offsetWidth,
-        height: frameRef.current.offsetHeight
+        width: node.offsetWidth,
+        height: node.offsetHeight
       });
-    }
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
   }, [layout, frameTheme, photos]);
 
   // Generate QR Code
   useEffect(() => {
     if (!showQrCode) { setQrDataUrl(null); return; }
-    const darkColor = ['photomatic_black', 'film_roll', 'anime_cyber', 'anime_goth', 'gothic_star', 'citypop_90s'].includes(frameTheme) ? '#FFFFFF' : '#121212';
+    const darkColor = getQrColor(frameTheme);
     QRCode.toDataURL(window.location.href, {
       width: 60,
       margin: 1,

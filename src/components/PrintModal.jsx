@@ -25,6 +25,13 @@ export default function PrintModal({
   fontStyle,
   doodlePaths,
   showQrCode,
+  customFrameDataUrl,
+  customBgDataUrl,
+  placedStickers = [],
+  placedCaptions = [],
+  placedImages = [],
+  watermarkText = null,
+  watermarkOpacity = 0.4,
   onClose
 }) {
   const printImgRef = useRef(null);
@@ -55,6 +62,13 @@ export default function PrintModal({
         sticker,
         doodlePaths: doodlePaths || [],
         showQrCode: showQrCode || false,
+        customFrameUrl: customFrameDataUrl || null,
+        customBgDataUrl: customBgDataUrl || null,
+        placedStickers,
+        placedCaptions,
+        placedImages,
+        watermarkText,
+        watermarkOpacity,
         resolutionScale,
       });
 
@@ -64,7 +78,7 @@ export default function PrintModal({
     } finally {
       setIsRendering(false);
     }
-  }, [photos, layout, frameTheme, filter, showGrain, showLedDate, titleText, fontStyle, sticker, doodlePaths, showQrCode, resolutionScale]);
+  }, [photos, layout, frameTheme, filter, showGrain, showLedDate, titleText, fontStyle, sticker, doodlePaths, showQrCode, resolutionScale, customFrameDataUrl, customBgDataUrl, placedStickers, placedCaptions, placedImages, watermarkText, watermarkOpacity]);
 
   useEffect(() => {
     renderStrip();

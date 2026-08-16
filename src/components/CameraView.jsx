@@ -3,6 +3,7 @@ import { Camera, FlipHorizontal, RefreshCw, Zap, Sparkles, Maximize, Minimize } 
 import { playBeep, playShutterSound, speakCountdown, setSoundGlobal } from '../utils/soundEffects';
 import { drawArPropToCanvas } from '../utils/aiFilters';
 import { drawAiBackgroundScene, getAiStyleCssFilter, renderSegmentedUserOnCanvas } from '../utils/aiBackgroundEngine';
+import { getLayoutSlotCount } from '../config/layouts';
 
 const AI_BACKGROUND_LABELS = {
   japan_sakura: '🌸 Tokyo Sakura',
@@ -16,6 +17,7 @@ const AI_BACKGROUND_LABELS = {
 const CameraView = forwardRef(function CameraView({
   photos,
   setPhotos,
+  layout = 'strip1x4',
   activeFilter,
   activeOverlay,
   aiBackground = 'none',
@@ -33,6 +35,13 @@ const CameraView = forwardRef(function CameraView({
   const liveCanvasRef = useRef(null);
   const maskRef = useRef(null);
   const customBgImgRef = useRef(null);
+  const streamRef = useRef(null);
+  const flashTimerRef = useRef(null);
+
+  // Cleanup flash timer on unmount
+  useEffect(() => () => {
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+  }, []);
 
   // Sync soundEnabled prop → global sound flag
   useEffect(() => {
@@ -51,7 +60,6 @@ const CameraView = forwardRef(function CameraView({
     }
   }, [customBgDataUrl]);
 
-  const [stream, setStream] = useState(null);
   const [isMirrored, setIsMirrored] = useState(true);
   const [isKioskMode, setIsKioskMode] = useState(false);
   const [cameraError, setCameraError] = useState(null);
@@ -105,7 +113,7 @@ const CameraView = forwardRef(function CameraView({
           }
         }
 
-        setStream(userStream);
+        streamRef.current = userStream;
         if (videoRef.current) {
           videoRef.current.srcObject = userStream;
           videoRef.current.muted = true;
@@ -125,8 +133,9 @@ const CameraView = forwardRef(function CameraView({
     setupCamera();
 
     return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
       }
     };
   }, []);
@@ -246,13 +255,14 @@ const CameraView = forwardRef(function CameraView({
     setIsCapturing(true);
     document.dispatchEvent(new CustomEvent('photobooth:sessionStart'));
     const newPhotos = [...photos];
+    const slots = getLayoutSlotCount(layout);
 
     const cheerWords = ['Senyum! 😊', 'Cakep! ✨', 'Mantap! 🔥', 'Keren! 💖'];
 
     speakCountdown('Siap? Yuk mulai!');
     await new Promise(res => setTimeout(res, 1200));
 
-    for (let shotIdx = 0; shotIdx < 4; shotIdx++) {
+    for (let shotIdx = 0; shotIdx < slots; shotIdx++) {
       setActiveShotIndex(shotIdx);
 
       const totalSecs = parseInt(countdownDuration) || 3;
@@ -275,11 +285,11 @@ const CameraView = forwardRef(function CameraView({
         setPhotos([...newPhotos]);
       }
 
-      setTimeout(() => setFlashActive(false), 150);
+      flashTimerRef.current = setTimeout(() => setFlashActive(false), 150);
       await new Promise(res => setTimeout(res, 900));
 
       // Pose gap jeda
-      if (shotIdx < 3) {
+      if (shotIdx < slots - 1) {
         setCountdown(null);
         setIsPoseGap(true);
         setPoseGapProgress(100);
@@ -304,39 +314,47 @@ const CameraView = forwardRef(function CameraView({
   };
 
   const retakeSingleShot = async (index) => {
-    if (isCapturing) return;
-    setIsCapturing(true);
-    setActiveShotIndex(index);
+    if (isCapturing) return false;
+    try {
+      setIsCapturing(true);
+      setActiveShotIndex(index);
 
-    const cheerWords = ['Senyum! 😊', 'Cakep! ✨', 'Mantap! 🔥', 'Keren! 💖'];
+      const cheerWords = ['Senyum! 😊', 'Cakep! ✨', 'Mantap! 🔥', 'Keren! 💖'];
 
-    const totalSecs = parseInt(countdownDuration) || 3;
-    for (let sec = totalSecs; sec > 0; sec--) {
-      setCountdown(sec);
-      playBeep(880, 0.12);
-      speakCountdown(String(sec));
-      await new Promise(res => setTimeout(res, 1000));
+      const totalSecs = parseInt(countdownDuration) || 3;
+      for (let sec = totalSecs; sec > 0; sec--) {
+        setCountdown(sec);
+        playBeep(880, 0.12);
+        speakCountdown(String(sec));
+        await new Promise(res => setTimeout(res, 1000));
+      }
+
+      const cheer = cheerWords[index] || 'Keren!';
+      setCountdown('📸');
+      speakCountdown(cheer);
+      setFlashActive(true);
+      playShutterSound();
+
+      const photoData = captureSingleFrame();
+      if (photoData) {
+        const updated = [...photos];
+        updated[index] = photoData;
+        setPhotos(updated);
+      }
+
+      flashTimerRef.current = setTimeout(() => setFlashActive(false), 150);
+      await new Promise(res => setTimeout(res, 500));
+
+      setCountdown(null);
+      setIsCapturing(false);
+      setActiveShotIndex(null);
+      return true;
+    } catch (e) {
+      console.error('Retake error:', e);
+      setIsCapturing(false);
+      setActiveShotIndex(null);
+      return false;
     }
-
-    const cheer = cheerWords[index] || 'Keren!';
-    setCountdown('📸');
-    speakCountdown(cheer);
-    setFlashActive(true);
-    playShutterSound();
-
-    const photoData = captureSingleFrame();
-    if (photoData) {
-      const updated = [...photos];
-      updated[index] = photoData;
-      setPhotos(updated);
-    }
-
-    setTimeout(() => setFlashActive(false), 150);
-    await new Promise(res => setTimeout(res, 500));
-
-    setCountdown(null);
-    setIsCapturing(false);
-    setActiveShotIndex(null);
   };
 
   useImperativeHandle(ref, () => ({
@@ -402,7 +420,7 @@ const CameraView = forwardRef(function CameraView({
               <div className="countdown-overlay">
                 <div className="countdown-number">{countdown}</div>
                 <div className="countdown-badge">
-                  Jepretan ke-{activeShotIndex !== null ? activeShotIndex + 1 : 1} dari 4
+                  Jepretan ke-{activeShotIndex !== null ? activeShotIndex + 1 : 1} dari {getLayoutSlotCount(layout)}
                 </div>
               </div>
             )}
@@ -433,7 +451,7 @@ const CameraView = forwardRef(function CameraView({
 
           {/* 4 Shots Thumbnail Bar — with always-visible retake + active slot highlight */}
           <div className="shots-row">
-            {[0, 1, 2, 3].map(idx => (
+            {Array.from({ length: getLayoutSlotCount(layout) }, (_, idx) => (
               <div
                 key={idx}
                 className={`shot-slot ${activeShotIndex === idx ? 'active-target' : ''} ${isCapturing && activeShotIndex === idx ? 'capturing-pulse' : ''}`}
@@ -472,14 +490,14 @@ const CameraView = forwardRef(function CameraView({
 
           {/* Session progress bar during capture */}
           {isCapturing && activeShotIndex !== null && (
-            <div className="session-progress-bar" role="progressbar" aria-valuenow={activeShotIndex + 1} aria-valuemax={4}>
-              {[0, 1, 2, 3].map(i => (
+            <div className="session-progress-bar" role="progressbar" aria-valuenow={activeShotIndex + 1} aria-valuemax={getLayoutSlotCount(layout)}>
+              {Array.from({ length: getLayoutSlotCount(layout) }, (_, i) => (
                 <div
                   key={i}
                   className={`progress-pip ${i < activeShotIndex ? 'done' : i === activeShotIndex ? 'active' : 'pending'}`}
                 />
               ))}
-              <span className="progress-label">Foto {activeShotIndex + 1} / 4</span>
+              <span className="progress-label">Foto {activeShotIndex + 1} / {getLayoutSlotCount(layout)}</span>
             </div>
           )}
 
@@ -490,7 +508,7 @@ const CameraView = forwardRef(function CameraView({
             disabled={isCapturing || !!cameraError}
           >
             <Zap size={20} />
-            <span>{isCapturing ? `Merekam... (${activeShotIndex + 1}/4)` : 'Mulai 4-Snap Studio! 🚀'}</span>
+            <span>{isCapturing ? `Merekam... (${activeShotIndex + 1}/${getLayoutSlotCount(layout)})` : `Mulai ${getLayoutSlotCount(layout)}-Snap Studio! 🚀`}</span>
           </button>
         </div>
 

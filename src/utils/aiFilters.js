@@ -17,24 +17,6 @@ export const AI_BACKGROUNDS = [
   { id: 'seoul_street', name: '🇰🇷 Hongdae Night Street', icon: '🌃' },
 ];
 
-export const AI_STYLES = [
-  { id: 'none', name: 'Original Photo', icon: '📸' },
-  { id: 'ghibli_anime', name: '🌸 Ghibli Anime Art', icon: '🎨', badge: 'HOT', filter: 'saturate(140%) contrast(110%) brightness(108%) sepia(15%) hue-rotate(-5deg)' },
-  { id: 'pixar_3d', name: '🎬 Pixar 3D Character', icon: '🧸', badge: 'VIRAL', filter: 'brightness(112%) contrast(125%) saturate(160%)' },
-  { id: 'superhero_comic', name: '🦸‍♂️ Superhero Comic Book', icon: '💥', badge: 'NEW', filter: 'contrast(160%) saturate(180%) brightness(105%)' },
-  { id: 'watercolor_dream', name: '🎨 Watercolor Painterly', icon: '🖌️', filter: 'saturate(130%) brightness(110%) contrast(95%) hue-rotate(10deg)' },
-  { id: 'cyberpunk_glow', name: '👾 Cyberpunk Neon Tint', icon: '⚡️', filter: 'contrast(140%) saturate(190%) hue-rotate(180deg) brightness(110%)' }
-];
-
-export const AI_OUTFITS = [
-  { id: 'none', name: 'Pakaian Asli', icon: '👔' },
-  { id: 'hanbok', name: '🇰🇷 Royal Korean Hanbok', icon: '🎎', badge: 'K-STYLE' },
-  { id: 'kimono', name: '👘 Japanese Floral Kimono', icon: '🌸' },
-  { id: 'suit', name: '🤵 Executive Tuxedo Suit', icon: '🎩' },
-  { id: 'graduation', name: '🎓 Toga Wisuda Master', icon: '🎓' },
-  { id: 'astronaut', name: '🧑‍🚀 NASA Space Astronaut', icon: '🚀' }
-];
-
 export const AR_PROPS = [
   { id: 'none', name: 'Tanpa Aksesoris', icon: '🚫' },
   { id: 'thug_glasses', name: '🕶️ Kacamata Cool Thug', icon: '🕶️' },

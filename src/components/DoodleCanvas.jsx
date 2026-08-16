@@ -13,27 +13,33 @@ export default function DoodleCanvas({
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState([]);
 
-  // Redraw all paths
+  // Redraw all paths — stored normalized (0-1), scaled to canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const w = canvas.width || 1;
+    const h = canvas.height || 1;
 
     // Draw saved paths
-    const allPaths = [...doodlePaths, ...(currentPath.length > 0 ? [{ color: brushColor, size: brushSize, points: currentPath }] : [])];
-    
+    const normSize = brushSize / w;
+    const allPaths = [
+      ...doodlePaths,
+      ...(currentPath.length > 0 ? [{ color: brushColor, size: normSize, points: currentPath }] : []),
+    ];
+
     allPaths.forEach(path => {
       if (!path.points || path.points.length < 2) return;
       ctx.beginPath();
       ctx.strokeStyle = path.color;
-      ctx.lineWidth = path.size;
+      ctx.lineWidth = Math.max(1, (path.size || normSize) * w);
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
-      ctx.moveTo(path.points[0].x, path.points[0].y);
+      ctx.moveTo(path.points[0].x * w, path.points[0].y * h);
       for (let i = 1; i < path.points.length; i++) {
-        ctx.lineTo(path.points[i].x, path.points[i].y);
+        ctx.lineTo(path.points[i].x * w, path.points[i].y * h);
       }
       ctx.stroke();
     });
@@ -43,27 +49,28 @@ export default function DoodleCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
     return {
-      x: (clientX - rect.left) * scaleX,
-      y: (clientY - rect.top) * scaleY
+      x: rect.width ? Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) : 0,
+      y: rect.height ? Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)) : 0,
     };
   };
 
   const startDrawing = (e) => {
     if (!isDoodling) return;
+    e.preventDefault();
     setIsDrawing(true);
+    // Capture the pointer so strokes keep tracking outside the canvas edge
+    try { canvasRef.current?.setPointerCapture(e.pointerId); } catch (err) { /* unsupported */ }
     const coords = getCanvasCoords(e);
     setCurrentPath([coords]);
   };
 
   const draw = (e) => {
     if (!isDrawing || !isDoodling) return;
+    e.preventDefault();
     const coords = getCanvasCoords(e);
     setCurrentPath(prev => [...prev, coords]);
   };
@@ -72,7 +79,8 @@ export default function DoodleCanvas({
     if (!isDrawing) return;
     setIsDrawing(false);
     if (currentPath.length > 1) {
-      setDoodlePaths(prev => [...prev, { color: brushColor, size: brushSize, points: currentPath }]);
+      const w = canvasRef.current?.width || 1;
+      setDoodlePaths(prev => [...prev, { color: brushColor, size: brushSize / w, points: currentPath }]);
     }
     setCurrentPath([]);
   };
@@ -86,9 +94,12 @@ export default function DoodleCanvas({
       onMouseMove={draw}
       onMouseUp={stopDrawing}
       onMouseLeave={stopDrawing}
+      onMouseUpCapture={stopDrawing}
+      onPointerCancel={stopDrawing}
       onTouchStart={startDrawing}
       onTouchMove={draw}
       onTouchEnd={stopDrawing}
+      onTouchCancel={stopDrawing}
       style={{
         position: 'absolute',
         inset: 0,

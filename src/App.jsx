@@ -79,8 +79,8 @@ export default function App() {
   useEffect(() => {
     loadAdminConfig().then(cfg => {
       setAdminConfig(cfg);
-      if (cfg?.kioskModeEnabled) setKioskMode(true);
-      if (cfg?.kioskIdleMinutes) setKioskIdleMinutes(cfg.kioskIdleMinutes);
+      if (cfg?.kioskMode) setKioskMode(true);
+      if (cfg?.idleMinutes) setKioskIdleMinutes(cfg.idleMinutes);
     }).catch(() => {});
     loadSettings().then(saved => {
       if (saved) {
@@ -116,33 +116,37 @@ export default function App() {
   useEffect(() => { debouncedSave(); return () => clearTimeout(saveTimer.current); }, [debouncedSave]);
 
   // ── Handlers ────────────────────────────────────────────────
+  const resetUserData = () => {
+    setPhotos([]);
+    setShowCelebration(false);
+    setCelebrationStripUrl(null);
+    setPlacedStickers([]);
+    setPlacedCaptions([]);
+    setPlacedImages([]);
+    setDoodlePaths([]);
+    setIsDoodling(false);
+    setSelectedLayer(null);
+    setLeadData(null);
+    setTitleText(DEFAULT_SETTINGS.titleText);
+    try { sessionStorage.removeItem('pendingStrip'); } catch (e) { /* noop */ }
+  };
+
   const handleReset = () => {
     if (photos.length > 0) {
       if (window.confirm('Mulai sesi foto baru? Foto saat ini akan terhapus.')) {
-        setPhotos([]);
-        setShowCelebration(false);
+        resetUserData();
       }
     } else {
+      resetUserData();
       setScreen('welcome');
     }
   };
 
-  const handleSessionComplete = async (completedPhotos) => {
-    // Save lead data if available
-    if (leadData?.name) {
-      try {
-        const sessionId = `session_pending_${Date.now()}`;
-        await saveLead({ name: leadData.name, phone: leadData.phone || '', sessionId });
-      } catch (e) {
-        console.warn('Lead save error:', e);
-      }
-    }
-
-    // Generate strip for QR delivery
+  const generateCelebrationStrip = useCallback(async (photosForStrip = null) => {
     try {
       const canvas = exportCanvasRef.current || document.createElement('canvas');
       const url = await drawPhotoStripToCanvas(canvas, {
-        photos: completedPhotos, layout, frameTheme, filter,
+        photos: photosForStrip || photos, layout, frameTheme, filter,
         showGrain, showLedDate, showQrCode: false,
         titleText: titleText || 'LIFE 4 CUTS 📸',
         fontStyle: 'default', sticker, doodlePaths: [],
@@ -153,7 +157,19 @@ export default function App() {
     } catch (e) {
       setCelebrationStripUrl(null);
     }
+  }, [photos, layout, frameTheme, filter, showGrain, showLedDate, titleText, sticker, customBgDataUrl, customFrameColor, watermarkText, watermarkOpacity]);
 
+  const handleSessionComplete = async (completedPhotos) => {
+    // Save lead data if available (deduped by db layer)
+    if (leadData?.name) {
+      try {
+        await saveLead({ name: leadData.name, phone: leadData.phone || '' });
+      } catch (e) {
+        console.warn('Lead save error:', e);
+      }
+    }
+
+    await generateCelebrationStrip(completedPhotos);
     setTimeout(() => setShowCelebration(true), 600);
   };
 
@@ -174,7 +190,10 @@ export default function App() {
         customBgDataUrl, customFrameColor, placedStickers, placedCaptions, placedImages,
         watermarkText, watermarkOpacity,
       });
-      await saveSession({ stripPng, theme: frameTheme, layout, filter, titleText, sticker });
+      const sessionId = await saveSession({ stripPng, theme: frameTheme, layout, filter, titleText, sticker });
+      if (leadData?.name) {
+        try { await saveLead({ name: leadData.name, phone: leadData.phone || '', sessionId }); } catch (e) { /* noop */ }
+      }
       setSaveToast('success');
       setTimeout(() => setSaveToast(null), 3500);
     } catch (e) {
@@ -282,7 +301,7 @@ export default function App() {
     }}
     adminConfig={adminConfig}
     onAdminAccess={() => setScreen('admin')}
-    leadCaptureEnabled={adminConfig?.leadCaptureEnabled || false}
+    leadCaptureEnabled={adminConfig?.leadCapture || false}
     onLeadSubmit={(lead) => setLeadData(lead)}
     onLeadSkip={() => setLeadData(null)}
   />;
@@ -303,7 +322,7 @@ export default function App() {
       <KioskIdleTimer
         enabled={kioskMode}
         idleMinutes={kioskIdleMinutes}
-        onIdle={() => { setPhotos([]); setShowCelebration(false); setScreen('welcome'); }}
+        onIdle={() => { resetUserData(); setScreen('welcome'); }}
       />
 
       {!kioskMode && <Header onReset={handleReset} hasPhotos={photos.length > 0} onOpenGallery={() => setShowGallery(true)} soundEnabled={soundEnabled} setSoundEnabled={setSoundEnabled} onOpenAdmin={() => setScreen('admin')} />}
@@ -317,10 +336,16 @@ export default function App() {
           onDownloadGif={handleDownloadGifFromCelebration}
           onShare={handleShare}
           onPrint={() => { setShowCelebration(false); setShowPrintModal(true); }}
-          onReset={() => { setShowCelebration(false); setPhotos([]); setCelebrationStripUrl(null); }}
-          onRetakePhoto={(idx) => {
+          onReset={() => resetUserData()}
+          onRetakePhoto={async (idx) => {
             setShowCelebration(false);
-            setTimeout(() => cameraRef.current?.retakeSingleShot(idx), 300);
+            setTimeout(async () => {
+              const ok = await cameraRef.current?.retakeSingleShot(idx);
+              if (ok) {
+                await generateCelebrationStrip();
+                setShowCelebration(true);
+              }
+            }, 300);
           }}
           kioskMode={kioskMode}
           stripDataUrl={celebrationStripUrl}
@@ -348,6 +373,7 @@ export default function App() {
             ref={cameraRef}
             photos={photos}
             setPhotos={setPhotos}
+            layout={layout}
             activeFilter={filter}
             activeOverlay="none"
             aiBackground={aiBackground}
@@ -516,8 +542,11 @@ export default function App() {
         <PrintModal
           photos={photos} filter={filter} frameTheme={frameTheme} layout={layout}
           showGrain={showGrain} showLedDate={showLedDate} showQrCode={false}
-          titleText={titleText} sticker={sticker} fontStyle="default" doodlePaths={[]}
+          titleText={titleText} sticker={sticker} fontStyle="default" doodlePaths={doodlePaths}
           customFrameDataUrl={customFrameDataUrl}
+          customBgDataUrl={customBgDataUrl}
+          watermarkText={watermarkText}
+          watermarkOpacity={watermarkOpacity}
           placedImages={placedImages}
           placedStickers={placedStickers}
           placedCaptions={placedCaptions}

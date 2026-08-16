@@ -6,38 +6,45 @@ import { generateAnimatedGif } from '../utils/gifExporter';
 import { playSuccessChime } from '../utils/soundEffects';
 import { AI_BACKGROUNDS, AR_PROPS } from '../utils/aiFilters';
 import { saveSetting } from '../utils/db';
+import { FRAME_THEME_DEFS } from '../config/frameThemes';
 
 // ── 8 curated frame themes with rich preview colors & badges ──────
 const LAYOUTS = [
-  { id: 'strip1x4',    name: '4-Cut Strip',   icon: '🎞️' },
+  { id: 'strip1x4',    name: 'Strip 4-Foto',   icon: '🎞️' },
   { id: 'grid2x2',     name: 'Grid 2×2',      icon: '▦' },
-  { id: 'hero1plus3',  name: '1+3 Hero',      icon: '🖼️' },
-  { id: 'strip1x3',    name: '3-Cut',         icon: '📋' },
-  { id: 'duo1x2',      name: '2-Cut Duo',     icon: '⬜' },
-  { id: 'filmroll',    name: 'Film Roll',      icon: '📽️' },
-  { id: 'photocard',   name: 'K-Pop Card',    icon: '💌', badge: 'NEW' },
+  { id: 'hero1plus3',  name: 'Hero 1+3',      icon: '🖼️' },
+  { id: 'strip1x3',    name: '3-Foto',        icon: '📋' },
+  { id: 'duo1x2',      name: 'Duo 2-Foto',    icon: '⬜' },
+  { id: 'filmroll',    name: 'Film Roll',     icon: '📽️' },
+  { id: 'photocard',   name: 'Kartu K-Pop',   icon: '💌', badge: 'BARU' },
 ];
-const FRAME_THEMES = [
-  { id: 'haru_white',       name: 'Clean White',  badge: 'MINIMAL', bg: '#FFFFFF', border: '#E2E8F0', text: '#1E293B' },
-  { id: 'anime_sakura',     name: 'Korean Pink',  badge: 'POPULAR', bg: 'linear-gradient(135deg, #FFE4EC, #FFB7C5)', border: '#FF94B2', text: '#D81B60' },
-  { id: 'anime_chibi',      name: 'Anime Chibi',  badge: 'ANIME',   bg: 'linear-gradient(135deg, #FFF0F5, #FFE4E1)', border: '#FF91A4', text: '#C71585' },
-  { id: 'hari_guru',        name: 'Hari Guru / Fest', badge: 'SCHOOL', bg: 'linear-gradient(135deg, #E6F3FF, #CCE5FF)', border: '#4A90E2', text: '#1B365D' },
-  { id: 'birthday_bash',    name: 'Happy Birthday', badge: 'PARTY', bg: 'linear-gradient(135deg, #FFF9C4, #FFE082)', border: '#F57F17', text: '#E65100' },
-  { id: 'photomatic_black', name: 'Studio Matte', badge: 'MATTE',   bg: '#121212', border: '#333333', text: '#FFFFFF' },
-  { id: 'anime_cyber',      name: 'Cyber Neon',   badge: 'NEON',    bg: 'linear-gradient(135deg, #0A001F, #1E0048)', border: '#00FFFF', text: '#00FFFF' },
-  { id: 'y2k_silver',       name: 'Y2K Chrome',   badge: 'CHROME',  bg: 'linear-gradient(135deg, #E8EDF2, #B0B0B0)', border: '#94A3B8', text: '#0F172A' },
-  { id: 'film_roll',        name: 'Vintage 35mm', badge: '35mm',    bg: '#1A1815', border: '#D97706', text: '#F59E0B' },
-  { id: 'boba_taro',        name: 'Boba Taro',    badge: 'CAFÉ',    bg: 'linear-gradient(135deg, #E6D7FF, #CDB4DB)', border: '#A855F7', text: '#6B21A8' },
-  { id: 'citypop_90s',      name: 'CityPop 90s',  badge: '90s',     bg: 'linear-gradient(135deg, #005F73, #0A9396)', border: '#EE9B00', text: '#F4A261' },
-];
+// UI-only presentation metadata per theme (swatch preview + badge)
+const THEME_UI_META = {
+  haru_white:       { badge: 'MINIMAL', bg: '#FFFFFF', border: '#E2E8F0', text: '#1E293B' },
+  anime_sakura:     { badge: 'POPULER', bg: 'linear-gradient(135deg, #FFE4EC, #FFB7C5)', border: '#FF94B2', text: '#D81B60' },
+  anime_chibi:      { badge: 'ANIME',   bg: 'linear-gradient(135deg, #FFF0F5, #FFE4E1)', border: '#FF91A4', text: '#C71585' },
+  hari_guru:        { badge: 'SEKOLAH', bg: 'linear-gradient(135deg, #E6F3FF, #CCE5FF)', border: '#4A90E2', text: '#1B365D' },
+  birthday_bash:    { badge: 'PESTA',   bg: 'linear-gradient(135deg, #FFF9C4, #FFE082)', border: '#F57F17', text: '#E65100' },
+  photomatic_black: { badge: 'MATTE',   bg: '#121212', border: '#333333', text: '#FFFFFF' },
+  anime_cyber:      { badge: 'NEON',    bg: 'linear-gradient(135deg, #0A001F, #1E0048)', border: '#00FFFF', text: '#00FFFF' },
+  y2k_silver:       { badge: 'KROM',    bg: 'linear-gradient(135deg, #E8EDF2, #B0B0B0)', border: '#94A3B8', text: '#0F172A' },
+  film_roll:        { badge: '35mm',    bg: '#1A1815', border: '#D97706', text: '#F59E0B' },
+  boba_taro:        { badge: 'KAFE',    bg: 'linear-gradient(135deg, #E6D7FF, #CDB4DB)', border: '#A855F7', text: '#6B21A8' },
+  citypop_90s:      { badge: '90s',     bg: 'linear-gradient(135deg, #005F73, #0A9396)', border: '#EE9B00', text: '#F4A261' },
+};
+// Pickers shown in the UI — ids/labels come from frameThemes.js defs
+const UI_THEME_IDS = new Set(Object.keys(THEME_UI_META));
+const FRAME_THEMES = FRAME_THEME_DEFS
+  .filter(def => UI_THEME_IDS.has(def.id))
+  .map(def => ({ id: def.id, name: def.name, ...THEME_UI_META[def.id] }));
 
 const FILTERS = [
-  { id: 'normal',          name: 'Original 📸' },
+  { id: 'normal',          name: 'Asli 📸' },
   { id: 'haru_soft',       name: '🩵 Haru Soft' },
-  { id: 'photomatic_mono', name: '🖤 Mono' },
+  { id: 'photomatic_mono', name: '🖤 Hitam Putih' },
   { id: 'retro35mm',       name: '🎞️ 35mm Film' },
   { id: 'pastel_glow',     name: '🌸 Pastel' },
-  { id: 'cinematic_mood',  name: '🌆 Cinematic' },
+  { id: 'cinematic_mood',  name: '🌆 Sinematik' },
   { id: 'y2k_flash',       name: '⚡️ Y2K Flash' },
 ];
 
@@ -308,7 +315,6 @@ export default function Controls({
                 setFrameTheme(t.id);
                 // Clear custom frame when switching to a preset
                 if (typeof setCustomFrameDataUrl === 'function') setCustomFrameDataUrl(null);
-                if (typeof window !== 'undefined') window.customFramePngUrl = null;
                 if (customFrameInputRef.current) customFrameInputRef.current.value = '';
               }}
             >
@@ -364,7 +370,6 @@ export default function Controls({
                 const dataUrl = evt.target.result;
                 if (typeof setCustomFrameDataUrl === 'function') setCustomFrameDataUrl(dataUrl);
                 if (typeof setFrameTheme === 'function') setFrameTheme('custom_png');
-                if (typeof window !== 'undefined') window.customFramePngUrl = dataUrl;
               };
               reader.readAsDataURL(file);
             }}
@@ -390,7 +395,6 @@ export default function Controls({
               onClick={() => {
                 if (typeof setCustomFrameDataUrl === 'function') setCustomFrameDataUrl(null);
                 if (typeof setFrameTheme === 'function') setFrameTheme('haru_white');
-                if (typeof window !== 'undefined') window.customFramePngUrl = null;
                 if (customFrameInputRef.current) customFrameInputRef.current.value = '';
               }}
               title="Hapus Custom Frame — kembali ke tema default"
