@@ -2077,6 +2077,16 @@ body {
   /* ── Camera View HP Optimization ── */
   .camera-wrapper {
     border-radius: var(--radius-sm);
+    /* Optimize camera size for portrait mobile */
+    max-height: 60vh;
+    aspect-ratio: 4 / 3;
+    width: 100%;
+  }
+
+  .webcam-feed {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 
   .camera-panel-header {
@@ -2085,6 +2095,19 @@ body {
 
   .camera-panel-title {
     font-size: 0.92rem;
+  }
+
+  /* Shots row responsive for mobile */
+  .shots-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .shot-slot {
+    aspect-ratio: 4 / 3;
+    min-height: 60px;
   }
 
   /* ── Controls V2 HP Optimization ── */
