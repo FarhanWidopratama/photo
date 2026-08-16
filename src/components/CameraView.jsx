@@ -117,7 +117,12 @@ const CameraView = forwardRef(function CameraView({
         if (videoRef.current) {
           videoRef.current.srcObject = userStream;
           videoRef.current.muted = true;
-          await videoRef.current.play().catch(() => {});
+          videoRef.current.onloadedmetadata = () => {
+            console.log('Video metadata loaded:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
+          };
+          await videoRef.current.play().catch((e) => {
+            console.warn('Video play warning:', e);
+          });
         }
         setCameraError(null);
       } catch (err) {
@@ -191,34 +196,47 @@ const CameraView = forwardRef(function CameraView({
       const video = videoRef.current;
       const canvas = liveCanvasRef.current;
 
-      if (video && canvas && video.readyState >= 2) {
-        const w = video.videoWidth || 640;
-        const h = video.videoHeight || 480;
+      if (video && canvas) {
+        // Wait until video has actual frame data
+        if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+          const w = video.videoWidth;
+          const h = video.videoHeight;
 
-        if (canvas.width !== w || canvas.height !== h) {
-          canvas.width = w;
-          canvas.height = h;
-        }
-
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, w, h);
-
-        if (aiBackground && aiBackground !== 'none') {
-          drawAiBackgroundScene(ctx, w, h, aiBackground, customBgImgRef.current);
-          renderSegmentedUserOnCanvas(ctx, video, maskRef.current, w, h, isMirrored);
-        } else {
-          ctx.save();
-          if (isMirrored) {
-            ctx.translate(w, 0);
-            ctx.scale(-1, 1);
+          // Sync canvas size to video
+          if (canvas.width !== w || canvas.height !== h) {
+            canvas.width = w;
+            canvas.height = h;
           }
-          ctx.drawImage(video, 0, 0, w, h);
-          ctx.restore();
-        }
 
-        const activeProp = arProp !== 'none' ? arProp : activeOverlay;
-        if (activeProp && activeProp !== 'none') {
-          drawArPropToCanvas(ctx, w, h, activeProp);
+          const ctx = canvas.getContext('2d', { alpha: false });
+          if (!ctx) {
+            console.error('Failed to get canvas 2d context');
+            animId = requestAnimationFrame(renderLoop);
+            return;
+          }
+
+          // Draw video frame
+          try {
+            if (aiBackground && aiBackground !== 'none') {
+              drawAiBackgroundScene(ctx, w, h, aiBackground, customBgImgRef.current);
+              renderSegmentedUserOnCanvas(ctx, video, maskRef.current, w, h, isMirrored);
+            } else {
+              ctx.save();
+              if (isMirrored) {
+                ctx.translate(w, 0);
+                ctx.scale(-1, 1);
+              }
+              ctx.drawImage(video, 0, 0, w, h);
+              ctx.restore();
+            }
+
+            const activeProp = arProp !== 'none' ? arProp : activeOverlay;
+            if (activeProp && activeProp !== 'none') {
+              drawArPropToCanvas(ctx, w, h, activeProp);
+            }
+          } catch (e) {
+            console.warn('Canvas draw error:', e);
+          }
         }
       }
 
